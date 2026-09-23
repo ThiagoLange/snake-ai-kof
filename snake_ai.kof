@@ -1,0 +1,450 @@
+// snake-ai-kof/snake_ai.kof
+//
+// Q-learning agent that teaches itself to play Snake (tabula rasa).
+// Grid 12x12, relative actions [straight, right, left], 6-bit Int state:
+// dangerStraight/Right/Left + foodAhead/Left/Right (64 states).
+// Rewards: +10 eat, -10 die, +/-1 Manhattan shaping.
+// After training, a greedy demo episode is recorded and exported as
+// watch.html (canvas replay + score chart) — open it in a browser.
+//
+// Design note: classless on purpose — one file, only top-level functions
+// over parallel Lists (box = [dir,foodX,foodY,score,over,steps,w,h]).
+//
+// Run from this folder: kof run snake_ai.kof
+// Tests: kof test tests/snake_test.kof
+// Target: JVM (kof run; default target)
+
+// ─── deterministic RNG (LCG mod 65521, no overflow) ───────────────────
+
+lcgNext(List<Int> rng): Int {
+    var s = rng.get(0)
+    var nxt = (s * 25173 + 13849) % 65521
+    rng.set(0, nxt)
+    return nxt
+}
+
+randInt(List<Int> rng, Int n): Int {
+    if (n <= 0) { throw "randInt: n must be > 0" }
+    return lcgNext(rng) % n
+}
+
+randDouble(List<Int> rng): Double {
+    var r = lcgNext(rng)
+    return (1.0 * r) / 65521.0
+}
+
+// ─── pure helpers ──────────────────────────────────────────────────────
+
+// relDir: relative turn 0=straight, 1=right, 2=left. Headings: 0=up 1=right 2=down 3=left.
+relDir(Int heading, Int turn): Int {
+    if (turn == 0) { return heading }
+    if (turn == 1) { return (heading + 1) % 4 }
+    return (heading + 3) % 4
+}
+
+headingDx(Int h): Int {
+    if (h == 0) { return 0 }
+    if (h == 1) { return 1 }
+    if (h == 2) { return 0 }
+    return -1
+}
+
+headingDy(Int h): Int {
+    if (h == 0) { return -1 }
+    if (h == 1) { return 0 }
+    if (h == 2) { return 1 }
+    return 0
+}
+
+// encodeState: 6 bits -> Int 0..63.
+encodeState(Int dS, Int dR, Int dL, Int fA, Int fL, Int fR): Int {
+    return dS + dR * 2 + dL * 4 + fA * 8 + fL * 16 + fR * 32
+}
+
+// ─── game state (head is LAST element; box=[dir,fx,fy,score,over,steps,w,h]) ─
+
+gameLen(List<Int> xs): Int { return xs.size() }
+
+gameHeadX(List<Int> xs): Int { return xs.get(xs.size() - 1) }
+
+gameHeadY(List<Int> ys): Int { return ys.get(ys.size() - 1) }
+
+gameDir(List<Int> box): Int { return box.get(0) }
+
+gameSetDir(List<Int> box, Int d): Int { box.set(0, d); return 0 }
+
+gameFoodX(List<Int> box): Int { return box.get(1) }
+
+gameFoodY(List<Int> box): Int { return box.get(2) }
+
+gameSetFood(List<Int> box, Int x, Int y): Int { box.set(1, x); box.set(2, y); return 0 }
+
+gameScore(List<Int> box): Int { return box.get(3) }
+
+gameAddScore(List<Int> box, Int d): Int { box.set(3, box.get(3) + d); return 0 }
+
+gameOver(List<Int> box): Int { return box.get(4) }
+
+gameSetOver(List<Int> box, Int v): Int { box.set(4, v); return 0 }
+
+gameSteps(List<Int> box): Int { return box.get(5) }
+
+gameIncSteps(List<Int> box): Int { box.set(5, box.get(5) + 1); return 0 }
+
+gameWid(List<Int> box): Int { return box.get(6) }
+
+gameHei(List<Int> box): Int { return box.get(7) }
+
+gamePushHead(List<Int> xs, List<Int> ys, Int x, Int y): Int { xs.add(x); ys.add(y); return 0 }
+
+gamePopTail(List<Int> xs, List<Int> ys): Int { xs.remove(0); ys.remove(0); return 0 }
+
+newGame(List<Int> xs, List<Int> ys, List<Int> box, Int w, Int h, List<Int> rng): Int {
+    var cx = w / 2
+    var cy = h / 2
+    xs.add(cx - 2); ys.add(cy)
+    xs.add(cx - 1); ys.add(cy)
+    xs.add(cx); ys.add(cy)
+    box.add(1)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(w)
+    box.add(h)
+    spawnFood(xs, ys, box, rng)
+    return 0
+}
+
+// spawnFood: random empty cell. No empty cell -> over (win).
+spawnFood(List<Int> xs, List<Int> ys, List<Int> box, List<Int> rng): Int {
+    var ex = listOf<Int>()
+    var ey = listOf<Int>()
+    var x = 0
+    while (x < gameWid(box)) {
+        var y = 0
+        while (y < gameHei(box)) {
+            if (cellBlocked(xs, ys, box, x, y, 0) == 0) {
+                ex.add(x)
+                ey.add(y)
+            }
+            y = y + 1
+        }
+        x = x + 1
+    }
+    if (ex.size() == 0) {
+        gameSetOver(box, 1)
+        return 0
+    }
+    var idx = randInt(rng, ex.size())
+    gameSetFood(box, ex.get(idx), ey.get(idx))
+    return 1
+}
+
+// cellBlocked: 1 if wall or body. ignoreTail=1 skips the tail tip (it moves away).
+cellBlocked(List<Int> xs, List<Int> ys, List<Int> box, Int x, Int y, Int ignoreTail): Int {
+    if (x < 0 || y < 0 || x >= gameWid(box) || y >= gameHei(box)) { return 1 }
+    var n = gameLen(xs)
+    var lim = n
+    if (ignoreTail == 1) { lim = n - 1 }
+    var i = 0
+    while (i < lim) {
+        if (xs.get(i) == x && ys.get(i) == y) { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+manhattan(Int x0, Int y0, Int x1, Int y1): Int {
+    var dx = x0 - x1
+    if (dx < 0) { dx = -dx }
+    var dy = y0 - y1
+    if (dy < 0) { dy = -dy }
+    return dx + dy
+}
+
+// stepGame: applies relative action, returns reward (+10 eat, -10 die, +/-1 shaping).
+stepGame(List<Int> xs, List<Int> ys, List<Int> box, Int action, List<Int> rng): Double {
+    var nd = relDir(gameDir(box), action)
+    var nx = gameHeadX(xs) + headingDx(nd)
+    var ny = gameHeadY(ys) + headingDy(nd)
+    var before = manhattan(gameHeadX(xs), gameHeadY(ys), gameFoodX(box), gameFoodY(box))
+    if (cellBlocked(xs, ys, box, nx, ny, 1) == 1) {
+        gameSetOver(box, 1)
+        return -10.0
+    }
+    gamePushHead(xs, ys, nx, ny)
+    gameSetDir(box, nd)
+    gameIncSteps(box)
+    if (nx == gameFoodX(box) && ny == gameFoodY(box)) {
+        gameAddScore(box, 1)
+        spawnFood(xs, ys, box, rng)
+        return 10.0
+    }
+    gamePopTail(xs, ys)
+    var after = manhattan(gameHeadX(xs), gameHeadY(ys), gameFoodX(box), gameFoodY(box))
+    var shaping = before - after
+    return 1.0 * shaping
+}
+
+// ─── state encoding ────────────────────────────────────────────────────
+
+encodeStateFromGame(List<Int> xs, List<Int> ys, List<Int> box): Int {
+    var h = gameDir(box)
+    var rd = relDir(h, 1)
+    var ld = relDir(h, 2)
+    var hx = gameHeadX(xs)
+    var hy = gameHeadY(ys)
+    var dS = cellBlocked(xs, ys, box, hx + headingDx(h), hy + headingDy(h), 1)
+    var dR = cellBlocked(xs, ys, box, hx + headingDx(rd), hy + headingDy(rd), 1)
+    var dL = cellBlocked(xs, ys, box, hx + headingDx(ld), hy + headingDy(ld), 1)
+    var fdx = gameFoodX(box) - hx
+    var fdy = gameFoodY(box) - hy
+    var hdx = headingDx(h)
+    var hdy = headingDy(h)
+    var ldx = headingDx(ld)
+    var ldy = headingDy(ld)
+    var rdx = headingDx(rd)
+    var rdy = headingDy(rd)
+    var fA = 0
+    var fL = 0
+    var fR = 0
+    if (fdx * hdx + fdy * hdy > 0) { fA = 1 }
+    if (fdx * ldx + fdy * ldy > 0) { fL = 1 }
+    if (fdx * rdx + fdy * rdy > 0) { fR = 1 }
+    return encodeState(dS, dR, dL, fA, fL, fR)
+}
+
+// ─── Q-table (flat values: 3 per key, actions straight/right/left) ─────
+
+qIndex(List<Int> keys, Int s): Int {
+    var i = 0
+    var n = keys.size()
+    while (i < n) {
+        if (keys.get(i) == s) { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+qEnsure(List<Int> keys, List<Double> vals, Int s): Int {
+    var idx = qIndex(keys, s)
+    if (idx != -1) { return idx }
+    keys.add(s)
+    vals.add(0.0)
+    vals.add(0.0)
+    vals.add(0.0)
+    return keys.size() - 1
+}
+
+qGet(List<Int> keys, List<Double> vals, Int s, Int a): Double {
+    var idx = qEnsure(keys, vals, s)
+    return vals.get(idx * 3 + a)
+}
+
+qMax(List<Int> keys, List<Double> vals, Int s): Double {
+    var idx = qEnsure(keys, vals, s)
+    var best = vals.get(idx * 3)
+    if (vals.get(idx * 3 + 1) > best) { best = vals.get(idx * 3 + 1) }
+    if (vals.get(idx * 3 + 2) > best) { best = vals.get(idx * 3 + 2) }
+    return best
+}
+
+qLearn(List<Int> keys, List<Double> vals, Int s, Int a, Double r, Double nextMax, Double alpha, Double gamma): Double {
+    var idx = qEnsure(keys, vals, s)
+    var q = vals.get(idx * 3 + a)
+    var target = r + gamma * nextMax
+    var updated = q + alpha * (target - q)
+    vals.set(idx * 3 + a, updated)
+    return updated
+}
+
+chooseAction(List<Int> keys, List<Double> vals, Int s, Double eps, List<Int> rng): Int {
+    var roll = randDouble(rng)
+    if (roll < eps) { return randInt(rng, 3) }
+    var best = 0
+    var bestV = qGet(keys, vals, s, 0)
+    if (qGet(keys, vals, s, 1) > bestV) { best = 1; bestV = qGet(keys, vals, s, 1) }
+    if (qGet(keys, vals, s, 2) > bestV) { best = 2 }
+    return best
+}
+
+// ─── training ──────────────────────────────────────────────────────────
+
+train(List<Int> qkeys, List<Double> qvals, Int episodes, Int maxSteps, Double alpha, Double gamma, Double epsStart, Double epsDecay, Double epsMin, List<Int> rng, List<Int> scores): Int {
+    var best = 0
+    var eps = epsStart
+    var ep = 0
+    while (ep < episodes) {
+        var xs = listOf<Int>()
+        var ys = listOf<Int>()
+        var box = listOf<Int>()
+        newGame(xs, ys, box, 12, 12, rng)
+        while (gameOver(box) == 0 && gameSteps(box) < maxSteps) {
+            var s = encodeStateFromGame(xs, ys, box)
+            var a = chooseAction(qkeys, qvals, s, eps, rng)
+            var r = stepGame(xs, ys, box, a, rng)
+            var nextMax = 0.0
+            if (gameOver(box) == 0) { nextMax = qMax(qkeys, qvals, encodeStateFromGame(xs, ys, box)) }
+            qLearn(qkeys, qvals, s, a, r, nextMax, alpha, gamma)
+        }
+        scores.add(gameScore(box))
+        if (gameScore(box) > best) { best = gameScore(box) }
+        eps = eps * epsDecay
+        if (eps < epsMin) { eps = epsMin }
+        if ((ep + 1) % 250 == 0) {
+            println("episode " + (ep + 1).toString() + " score=" + gameScore(box).toString() + " best=" + best.toString())
+        }
+        ep = ep + 1
+    }
+    return best
+}
+
+avgLast(List<Int> xs, Int k): Double {
+    var n = xs.size()
+    if (n == 0) { return 0.0 }
+    var start = n - k
+    if (start < 0) { start = 0 }
+    var sum = 0.0
+    var i = start
+    while (i < n) {
+        sum = sum + 1.0 * xs.get(i)
+        i = i + 1
+    }
+    var cnt = 1.0 * (n - start)
+    return sum / cnt
+}
+
+// ─── demo rollout (greedy) ─────────────────────────────────────────────
+
+frameOf(List<Int> xs, List<Int> ys, List<Int> box): String {
+    var sb = "[["
+    var i = 0
+    while (i < gameLen(xs)) {
+        if (i > 0) { sb = sb + "," }
+        sb = sb + xs.get(i).toString() + "," + ys.get(i).toString()
+        i = i + 1
+    }
+    sb = sb + "]," + gameFoodX(box).toString() + "," + gameFoodY(box).toString() + "," + gameScore(box).toString()
+    return sb + "]"
+}
+
+rolloutGreedy(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, List<String> framesOut, List<Int> metaOut): Int {
+    var xs = listOf<Int>()
+    var ys = listOf<Int>()
+    var box = listOf<Int>()
+    newGame(xs, ys, box, 12, 12, rng)
+    var frames = "[" + frameOf(xs, ys, box)
+    while (gameOver(box) == 0 && gameSteps(box) < maxSteps) {
+        var s = encodeStateFromGame(xs, ys, box)
+        var a = chooseAction(qkeys, qvals, s, 0.0, rng)
+        stepGame(xs, ys, box, a, rng)
+        frames = frames + "," + frameOf(xs, ys, box)
+    }
+    frames = frames + "]"
+    framesOut.add(frames)
+    metaOut.add(gameScore(box))
+    metaOut.add(gameSteps(box))
+    return gameScore(box)
+}
+
+// ─── HTML export ───────────────────────────────────────────────────────
+
+scoresJs(List<Int> xs): String {
+    var sb = "["
+    var i = 0
+    while (i < xs.size()) {
+        if (i > 0) { sb = sb + "," }
+        sb = sb + xs.get(i).toString()
+        i = i + 1
+    }
+    sb = sb + "]"
+    return sb
+}
+
+buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episodes, Int demoScore, Int demoSteps, Int states, Int w, Int h): String {
+    var html = ""
+    html = html + "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n<meta charset='UTF-8'/>\n"
+    html = html + "<title>Cobrinha IA - Q-learning em Kof</title>\n"
+    html = html + "<style>body{font-family:sans-serif;margin:24px;background:#f5f5f5} h1{color:#1b5e20} .wrap{display:flex;gap:24px;flex-wrap:wrap} .card{background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px #ccc} canvas{border:1px solid #999;background:#fff} .stats{display:grid;grid-template-columns:auto auto;gap:4px 16px;margin:8px 0} button{margin:4px;padding:6px 12px;font-size:14px} </style>\n"
+    html = html + "</head>\n<body>\n"
+    html = html + "<h1>Cobrinha IA - aprendeu sozinha (Q-learning em Kof)</h1>\n"
+    html = html + "<div class='wrap'>\n<div class='card'>\n<h2>Assistir a IA jogar</h2>\n"
+    html = html + "<canvas id='board' width='360' height='360'></canvas>\n"
+    html = html + "<div><button id='playBtn'>Pausar</button><button id='restartBtn'>Reiniciar</button> Velocidade: <input id='speed' type='range' min='30' max='800' value='150'/></div>\n"
+    html = html + "<div class='stats'><span>Passo:</span><b id='stepLbl'>0</b><span>Pontos:</span><b id='scoreLbl'>0</b></div>\n"
+    html = html + "</div>\n<div class='card'>\n<h2>Aprendizado</h2>\n"
+    html = html + "<canvas id='chart' width='480' height='200'></canvas>\n"
+    html = html + "<div class='stats'>\n"
+    html = html + "<span>Episodios de treino:</span><b>" + episodes.toString() + "</b>\n"
+    html = html + "<span>Melhor pontuacao (treino):</span><b>" + best.toString() + "</b>\n"
+    html = html + "<span>Media ultimos 100:</span><b>" + avg.toString() + "</b>\n"
+    html = html + "<span>Demo (esse video):</span><b>" + demoScore.toString() + " pontos em " + demoSteps.toString() + " passos</b>\n"
+    html = html + "<span>Estados visitados:</span><b>" + states.toString() + " / 64</b>\n"
+    html = html + "</div>\n</div>\n</div>\n"
+    html = html + "<p>Grade " + w.toString() + "x" + h.toString() + " - acoes relativas [reto, direita, esquerda] - recompensa +10 comer, -10 morrer.</p>\n"
+    html = html + "<script>\n"
+    html = html + "var FRAMES=" + framesJs + ";\n"
+    html = html + "var SCORES=" + scoresJsStr + ";\n"
+    html = html + "var W=" + w.toString() + ",H=" + h.toString() + ",CELL=30;\n"
+    html = html + "var idx=0,playing=true,speed=150,timer=null;\n"
+    html = html + "var board=document.getElementById('board');\n"
+    html = html + "var ctx=board.getContext('2d');\n"
+    html = html + "function draw(i){\n"
+    html = html + "ctx.fillStyle='#fff';ctx.fillRect(0,0,board.width,board.height);\n"
+    html = html + "ctx.strokeStyle='#e0e0e0';\n"
+    html = html + "for(var gx=0;gx<=W;gx++){ctx.beginPath();ctx.moveTo(gx*CELL,0);ctx.lineTo(gx*CELL,H*CELL);ctx.stroke();}\n"
+    html = html + "for(var gy=0;gy<=H;gy++){ctx.beginPath();ctx.moveTo(0,gy*CELL);ctx.lineTo(W*CELL,gy*CELL);ctx.stroke();}\n"
+    html = html + "if(FRAMES.length==0){ctx.fillStyle='#000';ctx.fillText('sem frames',10,20);return;}\n"
+    html = html + "var f=FRAMES[i];var flat=f[0],fx=f[1],fy=f[2],sc=f[3];\n"
+    html = html + "ctx.fillStyle='#e53935';ctx.beginPath();ctx.arc(fx*CELL+CELL/2,fy*CELL+CELL/2,CELL/2-3,0,6.29);ctx.fill();\n"
+    html = html + "for(var k=0;k<flat.length;k+=2){var last=(k+2>=flat.length);ctx.fillStyle=last?'#1b5e20':'#43a047';ctx.fillRect(flat[k]*CELL+1,flat[k+1]*CELL+1,CELL-2,CELL-2);}\n"
+    html = html + "document.getElementById('stepLbl').textContent=i+'/'+(FRAMES.length-1);\n"
+    html = html + "document.getElementById('scoreLbl').textContent=sc;\n"
+    html = html + "}\n"
+    html = html + "function loop(){if(!playing||FRAMES.length==0)return;idx=(idx+1)%FRAMES.length;draw(idx);}\n"
+    html = html + "function startTimer(){if(timer)clearInterval(timer);timer=setInterval(loop,speed);}\n"
+    html = html + "document.getElementById('playBtn').onclick=function(){playing=!playing;this.textContent=playing?'Pausar':'Jogar';};\n"
+    html = html + "document.getElementById('restartBtn').onclick=function(){idx=0;draw(0);};\n"
+    html = html + "document.getElementById('speed').oninput=function(){speed=830-this.value;startTimer();};\n"
+    html = html + "var ch=document.getElementById('chart');var cx=ch.getContext('2d');\n"
+    html = html + "var mx=0;for(var i=0;i<SCORES.length;i++){if(SCORES[i]>mx)mx=SCORES[i];}\n"
+    html = html + "if(mx==0)mx=1;\n"
+    html = html + "cx.strokeStyle='#1b5e20';cx.beginPath();\n"
+    html = html + "for(var i=0;i<SCORES.length;i++){var x=i/(SCORES.length-1||1)*(ch.width-40)+30;var y=ch.height-20-(SCORES[i]/mx)*(ch.height-40);if(i==0)cx.moveTo(x,y);else cx.lineTo(x,y);}\n"
+    html = html + "cx.stroke();\n"
+    html = html + "cx.fillStyle='#000';cx.font='11px sans-serif';cx.fillText('pontos por episodio (max '+mx+')',30,12);\n"
+    html = html + "draw(0);startTimer();\n"
+    html = html + "</script>\n</body>\n</html>\n"
+    return html
+}
+
+// ─── main ──────────────────────────────────────────────────────────────
+
+main() {
+    var rng = listOf<Int>()
+    rng.add(12345)
+    var episodes = 1500
+    var maxSteps = 300
+    println("snake Q-learning: grid 12x12, episodes=" + episodes.toString())
+    var qkeys = listOf<Int>()
+    var qvals = listOf<Double>()
+    var scores = listOf<Int>()
+    var best = train(qkeys, qvals, episodes, maxSteps, 0.1, 0.9, 1.0, 0.996, 0.05, rng, scores)
+    var avg = avgLast(scores, 100)
+    println("training done: best=" + best.toString() + " avgLast100=" + avg.toString() + " states=" + qkeys.size().toString())
+    var framesOut = listOf<String>()
+    var metaOut = listOf<Int>()
+    rolloutGreedy(qkeys, qvals, maxSteps, rng, framesOut, metaOut)
+    var demoScore = metaOut.get(0)
+    var demoSteps = metaOut.get(1)
+    println("demo: score=" + demoScore.toString() + " steps=" + demoSteps.toString())
+    var scoresStr = scoresJs(scores)
+    var html = buildHtml(framesOut.get(0), scoresStr, best, avg, episodes, demoScore, demoSteps, qkeys.size(), 12, 12)
+    File("watch.html").writeText(html)
+    println("wrote watch.html (" + html.length.toString() + " bytes) - abra no navegador para ver a IA jogar")
+    var framesJson = "{\"frames\":" + framesOut.get(0) + ",\"scores\":" + scoresStr + ",\"best\":" + best.toString() + ",\"avg\":" + avg.toString() + ",\"episodes\":" + episodes.toString() + ",\"demoScore\":" + demoScore.toString() + ",\"demoSteps\":" + demoSteps.toString() + ",\"states\":" + qkeys.size().toString() + ",\"w\":12,\"h\":12}"
+    File("frames.json").writeText(framesJson)
+    println("wrote frames.json (" + framesJson.length.toString() + " bytes) - API do servidor")
+}

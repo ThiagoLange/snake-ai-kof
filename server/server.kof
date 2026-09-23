@@ -1,0 +1,64 @@
+// server/server.kof — front 100% em Kof: serve o replay da IA (kof.web).
+// Run da raiz do projeto: kof run server/server.kof
+// Depois abra http://localhost:8080 no navegador.
+// Requer frames.json gerado pelo treino (kof run snake_ai.kof).
+// Target: JVM (kof.web server).
+
+playerPage(): String {
+    var html = ""
+    html = html + "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n<meta charset='UTF-8'/>\n"
+    html = html + "<title>Cobrinha IA - servidor Kof</title>\n"
+    html = html + "<style>body{font-family:sans-serif;margin:24px;background:#f5f5f5} h1{color:#1b5e20} .card{background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px #ccc;max-width:520px} canvas{border:1px solid #999;background:#fff} .stats{display:grid;grid-template-columns:auto auto;gap:4px 16px;margin:8px 0} button{margin:4px;padding:6px 12px;font-size:14px} </style>\n"
+    html = html + "</head>\n<body>\n"
+    html = html + "<h1>Cobrinha IA - servida por Kof (kof.web)</h1>\n"
+    html = html + "<div class='card'>\n<canvas id='board' width='360' height='360'></canvas>\n"
+    html = html + "<div><button id='playBtn'>Pausar</button><button id='restartBtn'>Reiniciar</button> Velocidade: <input id='speed' type='range' min='30' max='800' value='150'/></div>\n"
+    html = html + "<div class='stats'><span>Passo:</span><b id='stepLbl'>carregando...</b><span>Pontos:</span><b id='scoreLbl'>-</b></div>\n"
+    html = html + "<div class='stats'><span>Treino:</span><b id='metaLbl'>-</b></div>\n"
+    html = html + "</div>\n"
+    html = html + "<script>\n"
+    html = html + "var FRAMES=[],SCORES=[],W=12,H=12,CELL=30;\n"
+    html = html + "var idx=0,playing=true,speed=150,timer=null;\n"
+    html = html + "var board=document.getElementById('board');\n"
+    html = html + "var ctx=board.getContext('2d');\n"
+    html = html + "function draw(i){\n"
+    html = html + "ctx.fillStyle='#fff';ctx.fillRect(0,0,board.width,board.height);\n"
+    html = html + "ctx.strokeStyle='#e0e0e0';\n"
+    html = html + "for(var gx=0;gx<=W;gx++){ctx.beginPath();ctx.moveTo(gx*CELL,0);ctx.lineTo(gx*CELL,H*CELL);ctx.stroke();}\n"
+    html = html + "for(var gy=0;gy<=H;gy++){ctx.beginPath();ctx.moveTo(0,gy*CELL);ctx.lineTo(W*CELL,gy*CELL);ctx.stroke();}\n"
+    html = html + "if(FRAMES.length==0){ctx.fillStyle='#000';ctx.fillText('carregando...',10,20);return;}\n"
+    html = html + "var f=FRAMES[i];var flat=f[0],fx=f[1],fy=f[2],sc=f[3];\n"
+    html = html + "ctx.fillStyle='#e53935';ctx.beginPath();ctx.arc(fx*CELL+CELL/2,fy*CELL+CELL/2,CELL/2-3,0,6.29);ctx.fill();\n"
+    html = html + "for(var k=0;k<flat.length;k+=2){var last=(k+2>=flat.length);ctx.fillStyle=last?'#1b5e20':'#43a047';ctx.fillRect(flat[k]*CELL+1,flat[k+1]*CELL+1,CELL-2,CELL-2);}\n"
+    html = html + "document.getElementById('stepLbl').textContent=i+'/'+(FRAMES.length-1);\n"
+    html = html + "document.getElementById('scoreLbl').textContent=sc;\n"
+    html = html + "}\n"
+    html = html + "function loop(){if(!playing||FRAMES.length==0)return;idx=(idx+1)%FRAMES.length;draw(idx);}\n"
+    html = html + "function startTimer(){if(timer)clearInterval(timer);timer=setInterval(loop,speed);}\n"
+    html = html + "document.getElementById('playBtn').onclick=function(){playing=!playing;this.textContent=playing?'Pausar':'Jogar';};\n"
+    html = html + "document.getElementById('restartBtn').onclick=function(){idx=0;draw(0);};\n"
+    html = html + "document.getElementById('speed').oninput=function(){speed=830-this.value;startTimer();};\n"
+    html = html + "fetch('/api/frames').then(function(r){return r.json();}).then(function(d){\n"
+    html = html + "FRAMES=d.frames;SCORES=d.scores;W=d.w;H=d.h;\n"
+    html = html + "document.getElementById('metaLbl').textContent=d.episodes+' episodios, melhor '+d.best;\n"
+    html = html + "draw(0);startTimer();\n"
+    html = html + "}).catch(function(){document.getElementById('stepLbl').textContent='rode kof run snake_ai.kof primeiro';});\n"
+    html = html + "draw(0);\n"
+    html = html + "</script>\n</body>\n</html>\n"
+    return html
+}
+
+main() {
+    var app = web.app()
+    app.get("/") {
+        headerSet("Content-Type", "text/html")
+        return playerPage()
+    }
+    app.get("/api/frames") {
+        var raw = File("frames.json").readText()
+        if (raw == null) { return "{\"error\":\"rode kof run snake_ai.kof primeiro\"}" }
+        return raw
+    }
+    println("servidor Kof no ar: http://localhost:8888")
+    app.listen(8888)
+}

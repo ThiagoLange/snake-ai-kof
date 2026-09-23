@@ -1,0 +1,89 @@
+# Cobrinha IA — Q-learning em Kof
+
+Uma IA que **aprende sozinha** a jogar o jogo da cobrinha, escrita 100% na
+linguagem Kof — incluindo o algoritmo, o treino e o servidor web que
+transmite a partida. Sem rede neural, sem biblioteca: Q-learning tabular.
+
+Resultado típico: melhor de 32 pontos, média ~12 nos últimos 100 episódios,
+48/64 estados visitados.
+
+## Rodar tudo (passo a passo)
+
+Pré-requisito: Kof 0.4.10-beta instalado e no `PATH`.
+
+```bash
+export PATH="$HOME/.kof/bin:$PATH"
+kof version   # deve mostrar: kof 0.4.10-beta
+```
+
+1. Entrar na pasta do projeto:
+
+```bash
+cd snake-ai-kof
+```
+
+2. Treinar a IA (cerca de 1 minuto, gera `watch.html` e `frames.json`):
+
+```bash
+kof run snake_ai.kof
+```
+
+3. Ver a IA jogar — opção A, arquivo direto (sem servidor):
+
+```bash
+xdg-open watch.html
+```
+
+4. Ver a IA jogar — opção B, servida pelo próprio Kof:
+
+```bash
+kof run server/server.kof
+# abra http://localhost:8888 no navegador
+```
+
+A página mostra a cobrinha se movendo sozinha (play/pausa, reiniciar,
+velocidade), placar e curva de aprendizado. Os dados da partida vêm de
+`GET /api/frames`, tudo servido pelo `kof.web`.
+
+5. Rodar os testes:
+
+```bash
+kof test tests/snake_test.kof   # 8 testes
+kof check snake_ai.kof          # type-check
+kof check server/server.kof     # type-check
+```
+
+## Como a IA funciona
+
+- **Estado (6 bits, 64 estados):** perigo reto/direita/esquerda + comida
+  frente/esquerda/direita, tudo relativo à direção da cabeça.
+- **Ações relativas:** reto, virar à direita, virar à esquerda.
+- **Recompensa:** +10 comer, −10 morrer, ±1 aproximar/afastar (Manhattan).
+- **Hiperparâmetros:** 1500 episódios, grade 12×12, α=0.1, γ=0.9,
+  ε 1.0→0.05 (decaimento 0.996), RNG próprio determinístico (seed 12345,
+  todo treino é reprodutível).
+
+## Estrutura
+
+```
+snake-ai-kof/
+├── snake_ai.kof          # jogo + Q-learning + treino + export HTML/JSON
+├── server/server.kof     # front 100% em Kof (kof.web: / e /api/frames)
+├── tests/snake_test.kof  # 8 testes (RNG, estado, comer, morte, Q)
+├── watch.html            # gerado: replay standalone da partida
+├── frames.json           # gerado: frames + scores para a API
+└── README.md
+```
+
+`tests/` e `server/` ficam em subdirs porque o `kof run` compila o
+diretório inteiro como pacote (`PKG005`).
+
+## Notas de Kof
+
+- Sem classes: só funções top-level sobre listas paralelas
+  (`box = [dir,foodX,foodY,score,over,steps,w,h]`), pois classe com campos
+  `List<Int>` + função top-level com `%` sobre chamada quebra o backend
+  JVM com `VerifyError` (bug reportado upstream).
+- RNG próprio (LCG mod 65521) para treino 100% reprodutível.
+- Servidor usa `headerSet("Content-Type", "text/html")` — sem isso o
+  navegador recebe `text/plain` e não renderiza.
