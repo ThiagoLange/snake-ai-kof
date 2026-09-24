@@ -43,7 +43,8 @@ kof run server/server.kof
 
 A página mostra a cobrinha se movendo sozinha (play/pausa, reiniciar,
 velocidade), placar e curva de aprendizado. Os dados da partida vêm de
-`GET /api/frames`, tudo servido pelo `kof.web`.
+`GET /api/frames` e o JS de `GET /app.js`, tudo servido pelo `kof.web`
+(JS externo porque o CSP padrão do servidor bloqueia `<script>` inline).
 
 5. Rodar os testes:
 
