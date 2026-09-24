@@ -48,6 +48,10 @@ velocidade), placar e curva de aprendizado. Os dados da partida vêm de
 `GET /api/frames` e o JS de `GET /app.js`, tudo servido pelo `kof.web`
 (JS externo porque o CSP padrão do servidor bloqueia `<script>` inline).
 
+Para ver a evolução do aprendizado, use o seletor "Evolucao": são 10
+demos gravadas durante o treino (ep 250 até 2500). No começo a IA mal
+sai do lugar; no fim ela atravessa a grade comendo.
+
 5. Rodar os testes:
 
 ```bash

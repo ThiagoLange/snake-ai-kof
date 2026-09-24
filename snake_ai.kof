@@ -288,53 +288,7 @@ chooseAction(List<Int> keys, List<Double> vals, Int s, Double eps, List<Int> rng
     return best
 }
 
-// ─── training ──────────────────────────────────────────────────────────
-
-train(List<Int> qkeys, List<Double> qvals, Int episodes, Int maxSteps, Double alpha, Double gamma, Double epsStart, Double epsDecay, Double epsMin, List<Int> rng, List<Int> scores): Int {
-    var best = 0
-    var eps = epsStart
-    var ep = 0
-    while (ep < episodes) {
-        var xs = listOf<Int>()
-        var ys = listOf<Int>()
-        var box = listOf<Int>()
-        newGame(xs, ys, box, 12, 12, rng)
-        while (gameOver(box) == 0 && gameSteps(box) < maxSteps) {
-            var s = encodeStateFromGame(xs, ys, box)
-            var a = chooseAction(qkeys, qvals, s, eps, rng)
-            var r = stepGame(xs, ys, box, a, rng)
-            var nextMax = 0.0
-            if (gameOver(box) == 0) { nextMax = qMax(qkeys, qvals, encodeStateFromGame(xs, ys, box)) }
-            qLearn(qkeys, qvals, s, a, r, nextMax, alpha, gamma)
-        }
-        scores.add(gameScore(box))
-        if (gameScore(box) > best) { best = gameScore(box) }
-        eps = eps * epsDecay
-        if (eps < epsMin) { eps = epsMin }
-        if ((ep + 1) % 250 == 0) {
-            println("episode " + (ep + 1).toString() + " score=" + gameScore(box).toString() + " best=" + best.toString())
-        }
-        ep = ep + 1
-    }
-    return best
-}
-
-avgLast(List<Int> xs, Int k): Double {
-    var n = xs.size()
-    if (n == 0) { return 0.0 }
-    var start = n - k
-    if (start < 0) { start = 0 }
-    var sum = 0.0
-    var i = start
-    while (i < n) {
-        sum = sum + 1.0 * xs.get(i)
-        i = i + 1
-    }
-    var cnt = 1.0 * (n - start)
-    return sum / cnt
-}
-
-// ─── demo rollout (greedy) ─────────────────────────────────────────────
+// ─── demo rollout (greedy, frames gravados para o replay) ───────────────
 
 frameOf(List<Int> xs, List<Int> ys, List<Int> box): String {
     var sb = "[["
@@ -367,7 +321,68 @@ rolloutGreedy(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, 
     return gameScore(box)
 }
 
+// ─── training (grava demo gulosa a cada demoEvery episodios) ───────────
+
+train(List<Int> qkeys, List<Double> qvals, Int episodes, Int maxSteps, Double alpha, Double gamma, Double epsStart, Double epsDecay, Double epsMin, List<Int> rng, List<Int> scores, List<String> demoEntries, Int demoEvery): Int {
+    var best = 0
+    var eps = epsStart
+    var ep = 0
+    while (ep < episodes) {
+        var xs = listOf<Int>()
+        var ys = listOf<Int>()
+        var box = listOf<Int>()
+        newGame(xs, ys, box, 12, 12, rng)
+        while (gameOver(box) == 0 && gameSteps(box) < maxSteps) {
+            var s = encodeStateFromGame(xs, ys, box)
+            var a = chooseAction(qkeys, qvals, s, eps, rng)
+            var r = stepGame(xs, ys, box, a, rng)
+            var nextMax = 0.0
+            if (gameOver(box) == 0) { nextMax = qMax(qkeys, qvals, encodeStateFromGame(xs, ys, box)) }
+            qLearn(qkeys, qvals, s, a, r, nextMax, alpha, gamma)
+        }
+        scores.add(gameScore(box))
+        if (gameScore(box) > best) { best = gameScore(box) }
+        if ((ep + 1) % demoEvery == 0) {
+            var df = listOf<String>()
+            var dm = listOf<Int>()
+            rolloutGreedy(qkeys, qvals, maxSteps, rng, df, dm)
+            demoEntries.add("[" + (ep + 1).toString() + "," + dm.get(0).toString() + "," + df.get(0) + "]")
+            println("episode " + (ep + 1).toString() + " score=" + gameScore(box).toString() + " best=" + best.toString() + " demo=" + dm.get(0).toString())
+        }
+        eps = eps * epsDecay
+        if (eps < epsMin) { eps = epsMin }
+        ep = ep + 1
+    }
+    return best
+}
+
+avgLast(List<Int> xs, Int k): Double {
+    var n = xs.size()
+    if (n == 0) { return 0.0 }
+    var start = n - k
+    if (start < 0) { start = 0 }
+    var sum = 0.0
+    var i = start
+    while (i < n) {
+        sum = sum + 1.0 * xs.get(i)
+        i = i + 1
+    }
+    var cnt = 1.0 * (n - start)
+    return sum / cnt
+}
+
 // ─── HTML export ───────────────────────────────────────────────────────
+
+joinStrings(List<String> xs): String {
+    var sb = ""
+    var i = 0
+    while (i < xs.size()) {
+        if (i > 0) { sb = sb + "," }
+        sb = sb + xs.get(i)
+        i = i + 1
+    }
+    return sb
+}
 
 scoresJs(List<Int> xs): String {
     var sb = "["
@@ -381,7 +396,7 @@ scoresJs(List<Int> xs): String {
     return sb
 }
 
-buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episodes, Int demoScore, Int demoSteps, Int states, Int w, Int h): String {
+buildHtml(String demosJs, String scoresJsStr, Int best, Double avg, Int episodes, Int states, Int w, Int h): String {
     var html = ""
     html = html + "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n<meta charset='UTF-8'/>\n"
     html = html + "<title>Cobrinha IA - Q-learning em Kof</title>\n"
@@ -391,6 +406,7 @@ buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episode
     html = html + "<div class='wrap'>\n<div class='card'>\n<h2>Assistir a IA jogar</h2>\n"
     html = html + "<canvas id='board' width='360' height='360'></canvas>\n"
     html = html + "<div><button id='playBtn'>Pausar</button><button id='restartBtn'>Reiniciar</button> Velocidade: <input id='speed' type='range' min='30' max='800' value='150'/></div>\n"
+    html = html + "<div>Evolucao: <select id='epSel'></select> <b id='demoLbl'></b></div>\n"
     html = html + "<div class='stats'><span>Passo:</span><b id='stepLbl'>0</b><span>Pontos:</span><b id='scoreLbl'>0</b></div>\n"
     html = html + "</div>\n<div class='card'>\n<h2>Aprendizado</h2>\n"
     html = html + "<canvas id='chart' width='480' height='200'></canvas>\n"
@@ -398,12 +414,13 @@ buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episode
     html = html + "<span>Episodios de treino:</span><b>" + episodes.toString() + "</b>\n"
     html = html + "<span>Melhor pontuacao (treino):</span><b>" + best.toString() + "</b>\n"
     html = html + "<span>Media ultimos 100:</span><b>" + avg.toString() + "</b>\n"
-    html = html + "<span>Demo (esse video):</span><b>" + demoScore.toString() + " pontos em " + demoSteps.toString() + " passos</b>\n"
+    html = html + "<span>Melhor demo:</span><b>" + best.toString() + " pontos</b>\n"
     html = html + "<span>Estados visitados:</span><b>" + states.toString() + " / 64</b>\n"
     html = html + "</div>\n</div>\n</div>\n"
     html = html + "<p>Grade " + w.toString() + "x" + h.toString() + " - acoes relativas [reto, direita, esquerda] - recompensa +10 comer, -10 morrer.</p>\n"
     html = html + "<script>\n"
-    html = html + "var FRAMES=" + framesJs + ";\n"
+    html = html + "var DEMOS=" + demosJs + ";\n"
+    html = html + "var FRAMES=DEMOS.length>0?DEMOS[DEMOS.length-1][2]:[];\n"
     html = html + "var SCORES=" + scoresJsStr + ";\n"
     html = html + "var W=" + w.toString() + ",H=" + h.toString() + ",CELL=30;\n"
     html = html + "var idx=0,playing=true,speed=150,timer=null;\n"
@@ -426,6 +443,12 @@ buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episode
     html = html + "document.getElementById('playBtn').onclick=function(){playing=!playing;this.textContent=playing?'Pausar':'Jogar';};\n"
     html = html + "document.getElementById('restartBtn').onclick=function(){idx=0;draw(0);};\n"
     html = html + "document.getElementById('speed').oninput=function(){speed=830-this.value;startTimer();};\n"
+    html = html + "var sel=document.getElementById('epSel');\n"
+    html = html + "for(var k=0;k<DEMOS.length;k++){var o=document.createElement('option');o.value=k;o.text='ep '+DEMOS[k][0]+' - '+DEMOS[k][1]+' pts';sel.appendChild(o);}\n"
+    html = html + "sel.value=DEMOS.length-1;\n"
+    html = html + "sel.onchange=function(){selectDemo(parseInt(this.value));};\n"
+    html = html + "function selectDemo(k){FRAMES=DEMOS[k][2];idx=0;document.getElementById('demoLbl').textContent='ep '+DEMOS[k][0]+' - '+DEMOS[k][1]+' pontos';draw(0);}\n"
+    html = html + "if(DEMOS.length>0){selectDemo(DEMOS.length-1);}\n"
     html = html + "var ch=document.getElementById('chart');var cx=ch.getContext('2d');\n"
     html = html + "var mx=0;for(var i=0;i<SCORES.length;i++){if(SCORES[i]>mx)mx=SCORES[i];}\n"
     html = html + "if(mx==0)mx=1;\n"
@@ -452,20 +475,16 @@ main() {
     var qkeys = listOf<Int>()
     var qvals = listOf<Double>()
     var scores = listOf<Int>()
-    var best = train(qkeys, qvals, episodes, maxSteps, 0.1, 0.9, 1.0, 0.996, 0.05, rng, scores)
+    var demoEntries = listOf<String>()
+    var best = train(qkeys, qvals, episodes, maxSteps, 0.1, 0.9, 1.0, 0.996, 0.05, rng, scores, demoEntries, 250)
     var avg = avgLast(scores, 100)
-    println("training done: best=" + best.toString() + " avgLast100=" + avg.toString() + " states=" + qkeys.size().toString())
-    var framesOut = listOf<String>()
-    var metaOut = listOf<Int>()
-    rolloutGreedy(qkeys, qvals, maxSteps, rng, framesOut, metaOut)
-    var demoScore = metaOut.get(0)
-    var demoSteps = metaOut.get(1)
-    println("demo: score=" + demoScore.toString() + " steps=" + demoSteps.toString())
+    println("training done: best=" + best.toString() + " avgLast100=" + avg.toString() + " states=" + qkeys.size().toString() + " demos=" + demoEntries.size().toString())
     var scoresStr = scoresJs(scores)
-    var html = buildHtml(framesOut.get(0), scoresStr, best, avg, episodes, demoScore, demoSteps, qkeys.size(), 12, 12)
+    var demosJs = "[" + joinStrings(demoEntries) + "]"
+    var html = buildHtml(demosJs, scoresStr, best, avg, episodes, qkeys.size(), 12, 12)
     File("watch.html").writeText(html)
     println("wrote watch.html (" + html.length.toString() + " bytes) - abra no navegador para ver a IA jogar")
-    var framesJson = "{\"frames\":" + framesOut.get(0) + ",\"scores\":" + scoresStr + ",\"best\":" + best.toString() + ",\"avg\":" + avg.toString() + ",\"episodes\":" + episodes.toString() + ",\"demoScore\":" + demoScore.toString() + ",\"demoSteps\":" + demoSteps.toString() + ",\"states\":" + qkeys.size().toString() + ",\"w\":12,\"h\":12}"
+    var framesJson = "{\"demos\":" + demosJs + ",\"scores\":" + scoresStr + ",\"best\":" + best.toString() + ",\"avg\":" + avg.toString() + ",\"episodes\":" + episodes.toString() + ",\"states\":" + qkeys.size().toString() + ",\"w\":12,\"h\":12}"
     File("frames.json").writeText(framesJson)
     println("wrote frames.json (" + framesJson.length.toString() + " bytes) - API do servidor")
 }
