@@ -4,8 +4,10 @@ Uma IA que **aprende sozinha** a jogar o jogo da cobrinha, escrita 100% na
 linguagem Kof — incluindo o algoritmo, o treino e o servidor web que
 transmite a partida. Sem rede neural, sem biblioteca: Q-learning tabular.
 
-Resultado típico: melhor de 32 pontos, média ~12 nos últimos 100 episódios,
-48/64 estados visitados.
+Resultado típico: melhor de 30+ pontos, média ~11 nos últimos 100
+episódios, 48/64 estados visitados. Cada treino é único: a seed vem do
+relógio (`time.now()`), então a IA nunca morre no mesmo lugar duas vezes.
+O log imprime a seed — para repetir um treino, fixe ela no `main()`.
 
 ## Rodar tudo (passo a passo)
 
@@ -60,9 +62,9 @@ kof check server/server.kof     # type-check
   frente/esquerda/direita, tudo relativo à direção da cabeça.
 - **Ações relativas:** reto, virar à direita, virar à esquerda.
 - **Recompensa:** +10 comer, −10 morrer, ±1 aproximar/afastar (Manhattan).
-- **Hiperparâmetros:** 1500 episódios, grade 12×12, α=0.1, γ=0.9,
-  ε 1.0→0.05 (decaimento 0.996), RNG próprio determinístico (seed 12345,
-  todo treino é reprodutível).
+- **Hiperparâmetros:** 2500 episódios, grade 12×12, α=0.1, γ=0.9,
+  ε 1.0→0.05 (decaimento 0.996), RNG próprio (LCG mod 65521) com seed do
+  relógio. Para mudar os episódios, edite `var episodes` no `main()`.
 
 ## Estrutura
 

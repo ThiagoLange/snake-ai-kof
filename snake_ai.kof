@@ -33,6 +33,24 @@ randDouble(List<Int> rng): Double {
     return (1.0 * r) / 65521.0
 }
 
+// timeSeed: últimos 5 dígitos do relógio como Int (time.now() é Long e
+// List<Int> é homogênea — SEM056). Uma seed diferente por execução.
+timeSeed(): Int {
+    var s = time.now().toString()
+    var n = s.length
+    var start = n - 5
+    if (start < 0) { start = 0 }
+    var digits = s.substring(start, n)
+    var acc = 0
+    var i = 0
+    while (i < digits.length) {
+        var ch = digits.charAt(i)
+        acc = acc * 10 + (ch - 48)
+        i = i + 1
+    }
+    return acc
+}
+
 // ─── pure helpers ──────────────────────────────────────────────────────
 
 // relDir: relative turn 0=straight, 1=right, 2=left. Headings: 0=up 1=right 2=down 3=left.
@@ -423,11 +441,14 @@ buildHtml(String framesJs, String scoresJsStr, Int best, Double avg, Int episode
 // ─── main ──────────────────────────────────────────────────────────────
 
 main() {
+    // Seed sorteada a cada execução: cada treino é único (antes era sempre 12345).
+    // Para repetir um treino, troque pela seed impressa no log.
+    var seed = timeSeed()
     var rng = listOf<Int>()
-    rng.add(12345)
-    var episodes = 1500
+    rng.add(seed)
+    var episodes = 2500
     var maxSteps = 300
-    println("snake Q-learning: grid 12x12, episodes=" + episodes.toString())
+    println("snake Q-learning: grid 12x12, episodes=" + episodes.toString() + " seed=" + seed.toString())
     var qkeys = listOf<Int>()
     var qvals = listOf<Double>()
     var scores = listOf<Int>()
