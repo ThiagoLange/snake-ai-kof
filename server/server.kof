@@ -18,6 +18,11 @@ playerPage(): String {
     html = html + "<div class='stats'><span>Passo:</span><b id='stepLbl'>carregando...</b><span>Pontos:</span><b id='scoreLbl'>-</b></div>\n"
     html = html + "<div class='stats'><span>Treino:</span><b id='metaLbl'>-</b></div>\n"
     html = html + "</div>\n"
+    html = html + "<div class='card'>\n<h2>Treino ao vivo</h2>\n"
+    html = html + "<canvas id='live' width='480' height='160'></canvas>\n"
+    html = html + "<div class='stats'><span>Episodio:</span><b id='liveEp'>-</b><span>Placar:</span><b id='liveScore'>-</b><span>Melhor:</span><b id='liveBest'>-</b></div>\n"
+    html = html + "<p>Rode <code>kof run snake_ai.kof</code> em outro terminal para ver o aprendizado acontecendo.</p>\n"
+    html = html + "</div>\n"
     html = html + "<script src='/app.js'></script>\n</body>\n</html>\n"
     return html
 }
@@ -57,7 +62,29 @@ playerJs(): String {
     js = js + "document.getElementById('metaLbl').textContent=d.episodes+' episodios, melhor '+d.best;\n"
     js = js + "draw(0);startTimer();\n"
     js = js + "}).catch(function(){document.getElementById('stepLbl').textContent='rode kof run snake_ai.kof primeiro';});\n"
+    js = js + "var LIVE=[];\n"
+    js = js + "function drawLive(){\n"
+    js = js + "var lc=document.getElementById('live');var c=lc.getContext('2d');\n"
+    js = js + "c.fillStyle='#111';c.fillRect(0,0,lc.width,lc.height);\n"
+    js = js + "if(LIVE.length==0){c.fillStyle='#fff';c.fillText('aguardando treino...',10,20);return;}\n"
+    js = js + "var mx=0;for(var i=0;i<LIVE.length;i++){if(LIVE[i].score>mx)mx=LIVE[i].score;}\n"
+    js = js + "if(mx==0)mx=1;\n"
+    js = js + "c.strokeStyle='#00e676';c.beginPath();\n"
+    js = js + "for(var i=0;i<LIVE.length;i++){var x=30+i/(LIVE.length-1||1)*(lc.width-40);var y=lc.height-20-(LIVE[i].score/mx)*(lc.height-40);if(i==0)c.moveTo(x,y);else c.lineTo(x,y);}\n"
+    js = js + "c.stroke();\n"
+    js = js + "var last=LIVE[LIVE.length-1];\n"
+    js = js + "document.getElementById('liveEp').textContent=last.ep;\n"
+    js = js + "document.getElementById('liveScore').textContent=last.score;\n"
+    js = js + "document.getElementById('liveBest').textContent=last.best;\n"
+    js = js + "}\n"
+    js = js + "setInterval(function(){fetch('/api/progress').then(function(r){return r.text();}).then(function(t){\n"
+    js = js + "var lines=t.split('\\n');LIVE=[];\n"
+    js = js + "for(var i=0;i<lines.length;i++){if(lines[i].length>2){try{LIVE.push(JSON.parse(lines[i]));}catch(e){}}}\n"
+    js = js + "drawLive();\n"
+    js = js + "}).catch(function(){});\n"
+    js = js + "},1000);\n"
     js = js + "draw(0);\n"
+    js = js + "drawLive();\n"
     return js
 }
 
@@ -74,6 +101,11 @@ main() {
     app.get("/api/frames") {
         var raw = File("frames.json").readText()
         if (raw == null) { return "{\"error\":\"rode kof run snake_ai.kof primeiro\"}" }
+        return raw
+    }
+    app.get("/api/progress") {
+        var raw = File("progress.jsonl").readText()
+        if (raw == null) { return "" }
         return raw
     }
     println("servidor Kof no ar: http://localhost:8888")

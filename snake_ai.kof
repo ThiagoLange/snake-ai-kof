@@ -321,6 +321,22 @@ rolloutGreedy(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, 
     return gameScore(box)
 }
 
+// logProgress: appenda {"ep","score","best"} em progress.jsonl para o ao vivo.
+logProgress(Int ep, Int score, Int best): Int {
+    var line = "{\"ep\":" + ep.toString() + ",\"score\":" + score.toString() + ",\"best\":" + best.toString() + "}"
+    var prev = File("progress.jsonl").readText()
+    if (prev == null) {
+        File("progress.jsonl").writeText(line)
+        return 0
+    }
+    if (prev.length == 0) {
+        File("progress.jsonl").writeText(line)
+        return 0
+    }
+    File("progress.jsonl").writeText(prev + "\n" + line)
+    return 0
+}
+
 // ─── training (grava demo gulosa a cada demoEvery episodios) ───────────
 
 train(List<Int> qkeys, List<Double> qvals, Int episodes, Int maxSteps, Double alpha, Double gamma, Double epsStart, Double epsDecay, Double epsMin, List<Int> rng, List<Int> scores, List<String> demoEntries, Int demoEvery): Int {
@@ -342,6 +358,7 @@ train(List<Int> qkeys, List<Double> qvals, Int episodes, Int maxSteps, Double al
         }
         scores.add(gameScore(box))
         if (gameScore(box) > best) { best = gameScore(box) }
+        logProgress(ep + 1, gameScore(box), best)
         if ((ep + 1) % demoEvery == 0) {
             var df = listOf<String>()
             var dm = listOf<Int>()
@@ -472,6 +489,7 @@ main() {
     var episodes = 2500
     var maxSteps = 300
     println("snake Q-learning: grid 12x12, episodes=" + episodes.toString() + " seed=" + seed.toString())
+    File("progress.jsonl").writeText("")
     var qkeys = listOf<Int>()
     var qvals = listOf<Double>()
     var scores = listOf<Int>()

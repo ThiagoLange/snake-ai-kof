@@ -43,6 +43,19 @@ kof run server/server.kof
 # abra http://localhost:8888 no navegador
 ```
 
+5. Ver o treino ao vivo (a IA aprendendo em tempo real):
+
+```bash
+# terminal 1: servidor
+kof run server/server.kof
+# terminal 2: treino (escreve progress.jsonl a cada episódio)
+kof run snake_ai.kof
+```
+
+Abra http://localhost:8888 e role até "Treino ao vivo": o gráfico
+atualiza a cada segundo com episódio, placar e recorde enquanto o treino
+roda no outro terminal.
+
 A página mostra a cobrinha se movendo sozinha (play/pausa, reiniciar,
 velocidade), placar e curva de aprendizado. Os dados da partida vêm de
 `GET /api/frames` e o JS de `GET /app.js`, tudo servido pelo `kof.web`
@@ -52,7 +65,7 @@ Para ver a evolução do aprendizado, use o seletor "Evolucao": são 10
 demos gravadas durante o treino (ep 250 até 2500). No começo a IA mal
 sai do lugar; no fim ela atravessa a grade comendo.
 
-5. Rodar os testes:
+6. Rodar os testes:
 
 ```bash
 kof test tests/snake_test.kof   # 8 testes
@@ -79,6 +92,7 @@ snake-ai-kof/
 ├── tests/snake_test.kof  # 8 testes (RNG, estado, comer, morte, Q)
 ├── watch.html            # gerado: replay standalone da partida
 ├── frames.json           # gerado: frames + scores para a API
+├── progress.jsonl        # gerado: 1 linha por episódio para o ao vivo
 └── README.md
 ```
 
