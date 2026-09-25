@@ -53,6 +53,24 @@ timeSeed(): Int {
     return acc
 }
 
+// envInt: lê inteiro de variável de ambiente com fallback. Só aceita
+// dígitos; limita a [100,20000]. Ex: SNAKE_EPISODES=500 kof run snake_ai.kof
+envInt(String key, Int fallback): Int {
+    var raw = secrets.get(key, "")
+    if (raw.length == 0) { return fallback }
+    var acc = 0
+    var i = 0
+    while (i < raw.length) {
+        var ch = raw.charAt(i)
+        if (ch < 48 || ch > 57) { return fallback }
+        acc = acc * 10 + (ch - 48)
+        i = i + 1
+    }
+    if (acc < 100) { return 100 }
+    if (acc > 20000) { return 20000 }
+    return acc
+}
+
 // ─── pure helpers ──────────────────────────────────────────────────────
 
 // relDir: relative turn 0=straight, 1=right, 2=left. Headings: 0=up 1=right 2=down 3=left.
@@ -419,16 +437,16 @@ buildHtml(String demosJs, String scoresJsStr, Int best, Double avg, Int episodes
     var html = ""
     html = html + "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n<meta charset='UTF-8'/>\n"
     html = html + "<title>Cobrinha IA - Q-learning em Kof</title>\n"
-    html = html + "<style>body{font-family:sans-serif;margin:24px;background:#f5f5f5} h1{color:#1b5e20} .wrap{display:flex;gap:24px;flex-wrap:wrap} .card{background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px #ccc} canvas{border:2px solid #1b5e20;background:#111} .stats{display:grid;grid-template-columns:auto auto;gap:4px 16px;margin:8px 0} button{margin:4px;padding:6px 12px;font-size:14px} </style>\n"
+    html = html + "<style>body{font-family:sans-serif;margin:24px;background:#f5f5f5} h1{color:#1b5e20;text-align:center} .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:1200px;margin:0 auto} .card{background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px #ccc} canvas{border:2px solid #1b5e20;background:#111} .stats{display:grid;grid-template-columns:auto auto;gap:4px 16px;margin:8px 0} button{margin:4px;padding:6px 12px;font-size:14px} p.center{text-align:center} </style>\n"
     html = html + "</head>\n<body>\n"
     html = html + "<h1>Cobrinha IA - aprendeu sozinha (Q-learning em Kof)</h1>\n"
     html = html + "<div class='wrap'>\n<div class='card'>\n<h2>Assistir a IA jogar</h2>\n"
-    html = html + "<canvas id='board' width='360' height='360'></canvas>\n"
+    html = html + "<canvas id='board' width='480' height='480'></canvas>\n"
     html = html + "<div><button id='playBtn'>Pausar</button><button id='restartBtn'>Reiniciar</button> Velocidade: <input id='speed' type='range' min='30' max='800' value='150'/></div>\n"
     html = html + "<div>Evolucao: <select id='epSel'></select> <b id='demoLbl'></b></div>\n"
     html = html + "<div class='stats'><span>Passo:</span><b id='stepLbl'>0</b><span>Pontos:</span><b id='scoreLbl'>0</b></div>\n"
     html = html + "</div>\n<div class='card'>\n<h2>Aprendizado</h2>\n"
-    html = html + "<canvas id='chart' width='480' height='200'></canvas>\n"
+    html = html + "<canvas id='chart' width='560' height='220'></canvas>\n"
     html = html + "<div class='stats'>\n"
     html = html + "<span>Episodios de treino:</span><b>" + episodes.toString() + "</b>\n"
     html = html + "<span>Melhor pontuacao (treino):</span><b>" + best.toString() + "</b>\n"
@@ -436,12 +454,12 @@ buildHtml(String demosJs, String scoresJsStr, Int best, Double avg, Int episodes
     html = html + "<span>Melhor demo:</span><b>" + best.toString() + " pontos</b>\n"
     html = html + "<span>Estados visitados:</span><b>" + states.toString() + " / 64</b>\n"
     html = html + "</div>\n</div>\n</div>\n"
-    html = html + "<p>Grade " + w.toString() + "x" + h.toString() + " - acoes relativas [reto, direita, esquerda] - recompensa +10 comer, -10 morrer.</p>\n"
+    html = html + "<p class='center'>Grade " + w.toString() + "x" + h.toString() + " - acoes relativas [reto, direita, esquerda] - recompensa +10 comer, -10 morrer.</p>\n"
     html = html + "<script>\n"
     html = html + "var DEMOS=" + demosJs + ";\n"
     html = html + "var FRAMES=DEMOS.length>0?DEMOS[DEMOS.length-1][2]:[];\n"
     html = html + "var SCORES=" + scoresJsStr + ";\n"
-    html = html + "var W=" + w.toString() + ",H=" + h.toString() + ",CELL=30;\n"
+    html = html + "var W=" + w.toString() + ",H=" + h.toString() + ",CELL=40;\n"
     html = html + "var idx=0,playing=true,speed=150,timer=null;\n"
     html = html + "var board=document.getElementById('board');\n"
     html = html + "var ctx=board.getContext('2d');\n"
@@ -488,7 +506,7 @@ main() {
     var seed = timeSeed()
     var rng = listOf<Int>()
     rng.add(seed)
-    var episodes = 2500
+    var episodes = envInt("SNAKE_EPISODES", 2500)
     var maxSteps = 300
     println("snake Q-learning: grid 12x12, episodes=" + episodes.toString() + " seed=" + seed.toString())
     File("progress.jsonl").writeText("")
@@ -499,6 +517,11 @@ main() {
     var best = train(qkeys, qvals, episodes, maxSteps, 0.1, 0.9, 1.0, 0.996, 0.05, rng, scores, demoEntries, 250)
     var avg = avgLast(scores, 100)
     println("training done: best=" + best.toString() + " avgLast100=" + avg.toString() + " states=" + qkeys.size().toString() + " demos=" + demoEntries.size().toString())
+    var fdf = listOf<String>()
+    var fdm = listOf<Int>()
+    rolloutGreedy(qkeys, qvals, maxSteps, rng, fdf, fdm)
+    demoEntries.add("[" + episodes.toString() + "," + fdm.get(0).toString() + "," + fdf.get(0) + "]")
+    println("demo final: score=" + fdm.get(0).toString())
     var scoresStr = scoresJs(scores)
     var demosJs = "[" + joinStrings(demoEntries) + "]"
     var html = buildHtml(demosJs, scoresStr, best, avg, episodes, qkeys.size(), 12, 12)

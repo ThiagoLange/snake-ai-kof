@@ -253,6 +253,26 @@ test "timeseed menor que 65521" {
     }
 }
 
+envInt(String key, Int fallback): Int {
+    var raw = secrets.get(key, "")
+    if (raw.length == 0) { return fallback }
+    var acc = 0
+    var i = 0
+    while (i < raw.length) {
+        var ch = raw.charAt(i)
+        if (ch < 48 || ch > 57) { return fallback }
+        acc = acc * 10 + (ch - 48)
+        i = i + 1
+    }
+    if (acc < 100) { return 100 }
+    if (acc > 20000) { return 20000 }
+    return acc
+}
+
+test "envInt fallback sem variavel" {
+    assert(envInt("SNAKE_TEST_MISSING_KEY_XYZ", 777) == 777, "fallback direto")
+}
+
 test "randInt dentro dos limites" {
     var rng = listOf<Int>()
     rng.add(7)

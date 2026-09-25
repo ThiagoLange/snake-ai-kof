@@ -24,10 +24,17 @@ kof version   # deve mostrar: kof 0.4.10-beta
 cd snake-ai-kof
 ```
 
-2. Treinar a IA (cerca de 1 minuto, gera `watch.html` e `frames.json`):
+2. Treinar a IA (cerca de 2 minutos com 2500 episódios, gera `watch.html`
+e `frames.json`):
 
 ```bash
 kof run snake_ai.kof
+```
+
+Para treinar mais ou menos episódios (entre 100 e 20000):
+
+```bash
+SNAKE_EPISODES=500 kof run snake_ai.kof
 ```
 
 3. Ver a IA jogar — opção A, arquivo direto (sem servidor):
