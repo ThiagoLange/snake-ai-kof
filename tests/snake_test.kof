@@ -228,6 +228,31 @@ test "rng deterministico" {
     assert(lcgNext(r1) == lcgNext(r2), "segundo valor igual")
 }
 
+timeSeed(): Int {
+    var s = time.now().toString()
+    var n = s.length
+    var start = n - 4
+    if (start < 0) { start = 0 }
+    var digits = s.substring(start, n)
+    var acc = 0
+    var i = 0
+    while (i < digits.length) {
+        var ch = digits.charAt(i)
+        acc = acc * 10 + (ch - 48)
+        i = i + 1
+    }
+    return acc
+}
+
+test "timeseed menor que 65521" {
+    var i = 0
+    while (i < 20) {
+        var s = timeSeed()
+        assert(s >= 0 && s < 65521, "seed no intervalo do LCG")
+        i = i + 1
+    }
+}
+
 test "randInt dentro dos limites" {
     var rng = listOf<Int>()
     rng.add(7)

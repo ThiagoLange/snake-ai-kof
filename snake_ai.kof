@@ -33,12 +33,14 @@ randDouble(List<Int> rng): Double {
     return (1.0 * r) / 65521.0
 }
 
-// timeSeed: últimos 5 dígitos do relógio como Int (time.now() é Long e
-// List<Int> é homogênea — SEM056). Uma seed diferente por execução.
+// timeSeed: últimos 4 dígitos do relógio como Int (time.now() é Long e
+// List<Int> é homogênea — SEM056). Tem que ser < 65521: o LCG faz
+// s * 25173 e estoura Int32 se s for maior (seed 88590 quebrou o treino).
+// Uma seed diferente por execução (repete a cada ~10s, aceitável).
 timeSeed(): Int {
     var s = time.now().toString()
     var n = s.length
-    var start = n - 5
+    var start = n - 4
     if (start < 0) { start = 0 }
     var digits = s.substring(start, n)
     var acc = 0
