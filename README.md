@@ -65,17 +65,19 @@ roda no outro terminal.
 
 A página mostra a cobrinha se movendo sozinha (play/pausa, reiniciar,
 velocidade), placar e curva de aprendizado. Os dados da partida vêm de
-`GET /api/frames` e o JS de `GET /app.js`, tudo servido pelo `kof.web`
-(JS externo porque o CSP padrão do servidor bloqueia `<script>` inline).
+`GET /api/frames`, o JS de `GET /app.js` e o CSS de `GET /style.css`,
+tudo servido pelo `kof.web` (JS/CSS externos porque o CSP padrão do
+servidor bloqueia `<script>` e `<style>` inline).
 
-Para ver a evolução do aprendizado, use o seletor "Evolucao": são 10
-demos gravadas durante o treino (ep 250 até 2500). No começo a IA mal
+Para ver a evolução do aprendizado, use o seletor "Evolucao": são 11
+demos (10 gravadas durante o treino, ep 250 até 2500, + 1 demo final).
+No começo a IA mal
 sai do lugar; no fim ela atravessa a grade comendo.
 
 6. Rodar os testes:
 
 ```bash
-kof test tests/snake_test.kof   # 8 testes
+kof test tests/snake_test.kof   # 10 testes
 kof check snake_ai.kof          # type-check
 kof check server/server.kof     # type-check
 ```
@@ -87,19 +89,20 @@ kof check server/server.kof     # type-check
 - **Ações relativas:** reto, virar à direita, virar à esquerda.
 - **Recompensa:** +10 comer, −10 morrer, ±1 aproximar/afastar (Manhattan).
 - **Hiperparâmetros:** 2500 episódios, grade 12×12, α=0.1, γ=0.9,
-  ε 1.0→0.05 (decaimento 0.996), RNG próprio (LCG mod 65521) com seed do
-  relógio. Para mudar os episódios, edite `var episodes` no `main()`.
+   ε 1.0→0.05 (decaimento 0.996), RNG próprio (LCG mod 65521) com seed do
+   relógio. Para mudar os episódios, use `SNAKE_EPISODES=N kof run snake_ai.kof`
+   (entre 100 e 20000, padrão 2500).
 
 ## Estrutura
 
 ```
 snake-ai-kof/
 ├── snake_ai.kof          # jogo + Q-learning + treino + export HTML/JSON
-├── server/server.kof     # front 100% em Kof (kof.web: / e /api/frames)
-├── tests/snake_test.kof  # 8 testes (RNG, estado, comer, morte, Q)
-├── watch.html            # gerado: replay standalone da partida
-├── frames.json           # gerado: frames + scores para a API
-├── progress.jsonl        # gerado: 1 linha por episódio para o ao vivo
+├── server/server.kof     # front 100% em Kof (kof.web: / + /app.js + /style.css + /api/frames + /api/progress)
+├── tests/snake_test.kof  # 10 testes (RNG, estado, comer, morte, Q)
+├── watch.html            # gerado: replay standalone da partida (commitado com exemplo)
+├── frames.json           # gerado: frames + scores para a API (commitado com exemplo)
+├── progress.jsonl        # gerado: 1 linha por episódio para o ao vivo (não commitado, ignorado no git — rode o treino para gerar)
 └── README.md
 ```
 
