@@ -341,6 +341,75 @@ rolloutGreedy(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, 
     return gameScore(box)
 }
 
+// recordNative: rollout guloso gravado como Listas (para ui/demo_data.kof).
+// no máximo 80 quadros alternados.
+recordNative(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, List<List<Int>> outFrames): Int {
+    var xs = listOf<Int>()
+    var ys = listOf<Int>()
+    var box = listOf<Int>()
+    newGame(xs, ys, box, 12, 12, rng)
+    var count = 0
+    var step = 0
+    while (gameOver(box) == 0 && gameSteps(box) < maxSteps && count < 80) {
+        var s = encodeStateFromGame(xs, ys, box)
+        var a = chooseAction(qkeys, qvals, s, 0.0, rng)
+        stepGame(xs, ys, box, a, rng)
+        if (step % 2 == 0) {
+            var fl = listOf<Int>()
+            var k = 0
+            while (k < gameLen(xs)) {
+                fl.add(xs.get(k))
+                fl.add(ys.get(k))
+                k = k + 1
+            }
+            fl.add(gameFoodX(box))
+            fl.add(gameFoodY(box))
+            fl.add(gameScore(box))
+            outFrames.add(fl)
+            count = count + 1
+        }
+        step = step + 1
+    }
+    return gameScore(box)
+}
+
+// writeDemoData: gera ui/demo_data.kof com os quadros e o histórico
+// de pontos como código Kof (a cada 10 episódios).
+writeDemoData(String path, List<List<Int>> frames, Int finalScore, List<Int> scores, Int best, Int episodes): Int {
+    var sb = ""
+    sb = sb + "// gerado pelo treino - nao edite\n"
+    sb = sb + "demoScore(): Int { return " + finalScore.toString() + " }\n"
+    sb = sb + "trainingBest(): Int { return " + best.toString() + " }\n"
+    sb = sb + "trainingEpisodes(): Int { return " + episodes.toString() + " }\n"
+    sb = sb + "scoreHistory(): List<Int> {\n"
+    sb = sb + "var out = listOf<Int>()\n"
+    var q = 0
+    while (q < scores.size()) {
+        sb = sb + "out.add(" + scores.get(q).toString() + ")\n"
+        q = q + 10
+    }
+    sb = sb + "return out\n"
+    sb = sb + "}\n"
+    sb = sb + "demoFrames(): List<List<Int>> {\n"
+    sb = sb + "var out = listOf<List<Int>>()\n"
+    var i = 0
+    while (i < frames.size()) {
+        var f = frames.get(i)
+        sb = sb + "var f" + i.toString() + " = listOf<Int>()\n"
+        var k = 0
+        while (k < f.size()) {
+            sb = sb + "f" + i.toString() + ".add(" + f.get(k).toString() + ")\n"
+            k = k + 1
+        }
+        sb = sb + "out.add(f" + i.toString() + ")\n"
+        i = i + 1
+    }
+    sb = sb + "return out\n"
+    sb = sb + "}\n"
+    File(path).writeText(sb)
+    return frames.size()
+}
+
 // logProgress: appenda {"ep","score","best"} em progress.jsonl para o ao vivo.
 logProgress(Int ep, Int score, Int best): Int {
     var line = "{\"ep\":" + ep.toString() + ",\"score\":" + score.toString() + ",\"best\":" + best.toString() + "}"
@@ -530,4 +599,8 @@ main() {
     var framesJson = "{\"demos\":" + demosJs + ",\"scores\":" + scoresStr + ",\"best\":" + best.toString() + ",\"avg\":" + avg.toString() + ",\"episodes\":" + episodes.toString() + ",\"states\":" + qkeys.size().toString() + ",\"w\":12,\"h\":12}"
     File("frames.json").writeText(framesJson)
     println("wrote frames.json (" + framesJson.length.toString() + " bytes) - API do servidor")
+    var nativeFrames = listOf<List<Int>>()
+    var nativeScore = recordNative(qkeys, qvals, maxSteps, rng, nativeFrames)
+    var nNative = writeDemoData("ui/demo_data.kof", nativeFrames, nativeScore, scores, best, episodes)
+    println("wrote ui/demo_data.kof (" + nNative.toString() + " frames) - dados do visualizador nativo")
 }

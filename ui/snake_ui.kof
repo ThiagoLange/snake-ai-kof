@@ -1,0 +1,143 @@
+// ui/snake_ui.kof — espelho nativo do watch.html (kof.ui + Canvas), sem HTML.
+// Tabuleiro + placar + controles + gráfico do treino, tudo declarado em Kof.
+// Run da raiz do projeto: kof run ui/snake_ui.kof --target=js
+// Requer ui/demo_data.kof gerado pelo treino (kof run snake_ai.kof).
+// Os dois arquivos dividem o pacote ui/ — sem imports.
+// Target: KofJS (render real; JVM/Native são no-op).
+
+paintRect(Canvas c, Int x, Int y, Int cell): Int {
+    c.beginPath()
+    c.moveTo(x + 1, y + 1)
+    c.lineTo(x + cell - 1, y + 1)
+    c.lineTo(x + cell - 1, y + cell - 1)
+    c.lineTo(x + 1, y + cell - 1)
+    c.closePath()
+    c.fill()
+    return 0
+}
+
+drawBoard(Canvas c, Int w, Int h): Int {
+    c.setFill(Palette.black)
+    c.beginPath()
+    c.moveTo(0, 0)
+    c.lineTo(w, 0)
+    c.lineTo(w, h)
+    c.lineTo(0, h)
+    c.closePath()
+    c.fill()
+    return 0
+}
+
+drawFrame(Canvas c, List<Int> f, Int cell): Int {
+    var n = f.size()
+    drawBoard(c, 300, 300)
+    c.setFill(Palette.red)
+    c.beginPath()
+    c.arc(f.get(n - 3) * cell + 12, f.get(n - 2) * cell + 12, 9, 0.0, 6.29)
+    c.closePath()
+    c.fill()
+    c.setFill(Palette.green)
+    var k = 0
+    while (k + 3 < n) {
+        paintRect(c, f.get(k) * cell, f.get(k + 1) * cell, cell)
+        k = k + 2
+    }
+    c.setFill(Palette.yellow)
+    paintRect(c, f.get(n - 5) * cell, f.get(n - 4) * cell, cell)
+    return 0
+}
+
+drawChart(Canvas ch, List<Int> hist): Int {
+    ch.setFill(Palette.black)
+    ch.beginPath()
+    ch.moveTo(0, 0)
+    ch.lineTo(300, 0)
+    ch.lineTo(300, 120)
+    ch.lineTo(0, 120)
+    ch.closePath()
+    ch.fill()
+    var mx = 1
+    var i = 0
+    while (i < hist.size()) {
+        if (hist.get(i) > mx) { mx = hist.get(i) }
+        i = i + 1
+    }
+    ch.setStroke(Palette.green)
+    ch.beginPath()
+    var j = 0
+    while (j < hist.size()) {
+        var x = 30 + j
+        var y = 110 - hist.get(j) * 3
+        if (y < 5) { y = 5 }
+        if (j == 0) {
+            ch.moveTo(x, y)
+        } else {
+            ch.lineTo(x, y)
+        }
+        j = j + 1
+    }
+    ch.stroke()
+    return mx
+}
+
+togglePause(List<Int> paused): Int {
+    if (paused.get(0) == 0) {
+        paused.set(0, 1)
+    } else {
+        paused.set(0, 0)
+    }
+    return 0
+}
+
+askRestart(List<Int> restart): Int {
+    restart.set(0, 1)
+    return 0
+}
+
+main() {
+    println("ui starting")
+    var w = Window("Cobrinha IA - Kof UI")
+    var board = Canvas(300, 300)
+    w.bind(board)
+    var scoreLbl = Label("pontos: 0")
+    w.bind(scoreLbl)
+    var chart = Canvas(300, 120)
+    w.bind(chart)
+    var statsLbl = Label("treino")
+    w.bind(statsLbl)
+    var paused = listOf<Int>()
+    paused.add(0)
+    var restart = listOf<Int>()
+    restart.add(0)
+    w.bind(Button("Pausar", () -> togglePause(paused)))
+    w.bind(Button("Reiniciar", () -> askRestart(restart)))
+    w.show()
+    var frames = demoFrames()
+    var hist = scoreHistory()
+    var cell = 25
+    var best = trainingBest()
+    var eps = trainingEpisodes()
+    statsLbl.text = "melhor: " + best.toString() + " - ep " + eps.toString()
+    drawChart(chart, hist)
+    var running = listOf<Int>()
+    running.add(1)
+    while (running.get(0) == 1) {
+        var i = 0
+        while (i < frames.size()) {
+            if (restart.get(0) == 1) {
+                restart.set(0, 0)
+                i = 0
+            }
+            if (paused.get(0) == 0) {
+                var f = frames.get(i)
+                var n = f.size()
+                drawFrame(board, f, cell)
+                scoreLbl.text = "pontos: " + f.get(n - 1).toString()
+                i = i + 1
+            }
+            time.sleep(200)
+        }
+        scoreLbl.text = "fim! pontos: " + demoScore().toString() + " - repetindo..."
+        time.sleep(1000)
+    }
+}

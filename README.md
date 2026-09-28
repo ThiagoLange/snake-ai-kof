@@ -74,7 +74,20 @@ demos (10 gravadas durante o treino, ep 250 até 2500, + 1 demo final).
 No começo a IA mal
 sai do lugar; no fim ela atravessa a grade comendo.
 
-6. Rodar os testes:
+6. Ver a IA jogar — opção C, janela nativa (kof.ui, sem navegador):
+
+```bash
+kof build ui/snake_ui.kof --target js --output ui-dist
+kof-webview ui-dist/index.html
+```
+
+Abre a janela "Cobrinha IA - Kof UI" com tabuleiro, placar, botões
+Pausar/Reiniciar e gráfico do treino — tudo desenhado pelo Canvas do
+Kof a partir de `ui/demo_data.kof` (gerado pelo treino). Na 0.5.0 o
+`kof run --target=js` não abre a janela sozinho (na 0.4.10 abria), por
+isso o fluxo é build + webview. Feche a janela para sair.
+
+7. Rodar os testes:
 
 ```bash
 kof test tests/snake_test.kof   # 10 testes
@@ -100,6 +113,8 @@ snake-ai-kof/
 ├── snake_ai.kof          # jogo + Q-learning + treino + export HTML/JSON
 ├── server/server.kof     # front 100% em Kof (kof.web: / + /app.js + /style.css + /api/frames + /api/progress)
 ├── tests/snake_test.kof  # 10 testes (RNG, estado, comer, morte, Q)
+├── ui/snake_ui.kof       # visualizador nativo (kof.ui + Canvas)
+├── ui/demo_data.kof      # gerado: demo + histórico para a UI nativa
 ├── watch.html            # gerado: replay standalone da partida (commitado com exemplo)
 ├── frames.json           # gerado: frames + scores para a API (commitado com exemplo)
 ├── progress.jsonl        # gerado: 1 linha por episódio para o ao vivo (não commitado, ignorado no git — rode o treino para gerar)
