@@ -84,9 +84,10 @@ kof-webview "$(pwd)/ui-dist/index.html"
 (O webview exige caminho absoluto — com caminho relativo dá
 `cannot resolve file URI`. Feche a janela para sair.)
 
-Abre a janela "Cobrinha IA - Kof UI" com tabuleiro, placar, botões
-Pausar/Reiniciar e gráfico do treino — tudo desenhado pelo Canvas do
-Kof a partir de `ui/demo_data.kof` (gerado pelo treino). Na 0.5.0 o
+Abre a janela "Cobrinha IA - Kof UI" com tabuleiro, placar, botão
+Pausar e curva de aprendizado — tudo num Canvas só do Kof. A IA joga
+AO VIVO com a Q-table de `ui/demo_data.kof` (gerada pelo treino):
+cada partida usa uma seed nova, então o jogo nunca se repete. Na 0.5.0 o
 `kof run --target=js` não abre a janela sozinho (na 0.4.10 abria), por
 isso o fluxo é build + webview. Feche a janela para sair.
 

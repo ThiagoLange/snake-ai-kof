@@ -375,7 +375,7 @@ recordNative(List<Int> qkeys, List<Double> qvals, Int maxSteps, List<Int> rng, L
 
 // writeDemoData: gera ui/demo_data.kof com os quadros e o histórico
 // de pontos como código Kof (a cada 10 episódios).
-writeDemoData(String path, List<List<Int>> frames, Int finalScore, List<Int> scores, Int best, Int episodes): Int {
+writeDemoData(String path, List<List<Int>> frames, Int finalScore, List<Int> scores, Int best, Int episodes, List<Int> qkeys, List<Double> qvals): Int {
     var sb = ""
     sb = sb + "// gerado pelo treino - nao edite\n"
     sb = sb + "demoScore(): Int { return " + finalScore.toString() + " }\n"
@@ -403,6 +403,24 @@ writeDemoData(String path, List<List<Int>> frames, Int finalScore, List<Int> sco
         }
         sb = sb + "out.add(f" + i.toString() + ")\n"
         i = i + 1
+    }
+    sb = sb + "return out\n"
+    sb = sb + "}\n"
+    sb = sb + "qKeys(): List<Int> {\n"
+    sb = sb + "var out = listOf<Int>()\n"
+    var t = 0
+    while (t < qkeys.size()) {
+        sb = sb + "out.add(" + qkeys.get(t).toString() + ")\n"
+        t = t + 1
+    }
+    sb = sb + "return out\n"
+    sb = sb + "}\n"
+    sb = sb + "qVals(): List<Double> {\n"
+    sb = sb + "var out = listOf<Double>()\n"
+    var u = 0
+    while (u < qvals.size()) {
+        sb = sb + "out.add(" + qvals.get(u).toString() + ")\n"
+        u = u + 1
     }
     sb = sb + "return out\n"
     sb = sb + "}\n"
@@ -601,6 +619,6 @@ main() {
     println("wrote frames.json (" + framesJson.length.toString() + " bytes) - API do servidor")
     var nativeFrames = listOf<List<Int>>()
     var nativeScore = recordNative(qkeys, qvals, maxSteps, rng, nativeFrames)
-    var nNative = writeDemoData("ui/demo_data.kof", nativeFrames, nativeScore, scores, best, episodes)
+    var nNative = writeDemoData("ui/demo_data.kof", nativeFrames, nativeScore, scores, best, episodes, qkeys, qvals)
     println("wrote ui/demo_data.kof (" + nNative.toString() + " frames) - dados do visualizador nativo")
 }

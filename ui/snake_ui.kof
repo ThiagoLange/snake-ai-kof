@@ -1,9 +1,249 @@
-// ui/snake_ui.kof — espelho nativo do watch.html (kof.ui + Canvas), sem HTML.
-// Tabuleiro + placar + controles + gráfico do treino, tudo declarado em Kof.
+// ui/snake_ui.kof — IA jogando AO VIVO (kof.ui + Canvas), espelho do watch.html.
+// Cada partida usa uma seed nova: o jogo nunca se repete, a cobrinha
+// nunca morre no mesmo ponto (antes era replay de 80 quadros gravados).
+// Layout: UM canvas largo (jogo quadrado a esquerda, curva de aprendizado
+// a direita). O runtime estica o canvas na largura da janela mantendo a
+// proporcao — com canvas quadrado o tabuleiro sempre estourava a altura e
+// gerava barra de rolagem. Assim tudo aparece na tela, sem rolagem.
 // Run da raiz do projeto: kof run ui/snake_ui.kof --target=js
-// Requer ui/demo_data.kof gerado pelo treino (kof run snake_ai.kof).
-// Os dois arquivos dividem o pacote ui/ — sem imports.
-// Target: KofJS (render real; JVM/Native são no-op).
+// Requer ui/demo_data.kof com a Q-table (qKeys/qVals) gerada pelo treino.
+// Motor do jogo copiado de ../snake_ai.kof (mesmo padrao de tests/).
+// Target: KofJS (render real; JVM/Native sao no-op).
+
+// ─── cores (iguais ao watch.html) ─────────────────────────────────────
+
+bgColor(): Int { return 286331391 }
+gridColor(): Int { return 1145324799 }
+foodColor(): Int { return -11382017 }
+headColor(): Int { return 15103743 }
+bodyColor(): Int { return 1777381119 }
+lineColor(): Int { return 459153663 }
+
+// ─── rng (copia de ../snake_ai.kof) ───────────────────────────────────
+
+lcgNext(List<Int> rng): Int {
+    var s = rng.get(0)
+    var nxt = (s * 25173 + 13849) % 65521
+    rng.set(0, nxt)
+    return nxt
+}
+
+randInt(List<Int> rng, Int n): Int {
+    if (n <= 0) { throw "randInt: n must be > 0" }
+    return lcgNext(rng) % n
+}
+
+timeSeed(): Int {
+    var s = time.now().toString()
+    var n = s.length
+    var start = n - 4
+    if (start < 0) { start = 0 }
+    var digits = s.substring(start, n)
+    var acc = 0
+    var i = 0
+    while (i < digits.length) {
+        var ch = digits.charAt(i)
+        acc = acc * 10 + (ch - 48)
+        i = i + 1
+    }
+    return acc
+}
+
+// seed nova por partida: relogio + contador (sempre < 65521, como o LCG exige).
+gameSeed(Int games): Int {
+    return (timeSeed() + games * 7919) % 65521
+}
+
+// ─── motor (copia de ../snake_ai.kof; guloso, sem aprender) ────────────
+
+relDir(Int heading, Int turn): Int {
+    if (turn == 0) { return heading }
+    if (turn == 1) { return (heading + 1) % 4 }
+    return (heading + 3) % 4
+}
+
+headingDx(Int h): Int {
+    if (h == 0) { return 0 }
+    if (h == 1) { return 1 }
+    if (h == 2) { return 0 }
+    return -1
+}
+
+headingDy(Int h): Int {
+    if (h == 0) { return -1 }
+    if (h == 1) { return 0 }
+    if (h == 2) { return 1 }
+    return 0
+}
+
+encodeState(Int dS, Int dR, Int dL, Int fA, Int fL, Int fR): Int {
+    return dS + dR * 2 + dL * 4 + fA * 8 + fL * 16 + fR * 32
+}
+
+gameLen(List<Int> xs): Int { return xs.size() }
+gameHeadX(List<Int> xs): Int { return xs.get(xs.size() - 1) }
+gameHeadY(List<Int> ys): Int { return ys.get(ys.size() - 1) }
+gameDir(List<Int> box): Int { return box.get(0) }
+gameSetDir(List<Int> box, Int d): Int { box.set(0, d); return 0 }
+gameFoodX(List<Int> box): Int { return box.get(1) }
+gameFoodY(List<Int> box): Int { return box.get(2) }
+gameSetFood(List<Int> box, Int x, Int y): Int { box.set(1, x); box.set(2, y); return 0 }
+gameScore(List<Int> box): Int { return box.get(3) }
+gameAddScore(List<Int> box, Int d): Int { box.set(3, box.get(3) + d); return 0 }
+gameOver(List<Int> box): Int { return box.get(4) }
+gameSetOver(List<Int> box, Int v): Int { box.set(4, v); return 0 }
+gameSteps(List<Int> box): Int { return box.get(5) }
+gameIncSteps(List<Int> box): Int { box.set(5, box.get(5) + 1); return 0 }
+gameWid(List<Int> box): Int { return box.get(6) }
+gameHei(List<Int> box): Int { return box.get(7) }
+gamePushHead(List<Int> xs, List<Int> ys, Int x, Int y): Int { xs.add(x); ys.add(y); return 0 }
+gamePopTail(List<Int> xs, List<Int> ys): Int { xs.remove(0); ys.remove(0); return 0 }
+
+newGame(List<Int> xs, List<Int> ys, List<Int> box, Int w, Int h, List<Int> rng): Int {
+    var cx = w / 2
+    var cy = h / 2
+    xs.add(cx - 2); ys.add(cy)
+    xs.add(cx - 1); ys.add(cy)
+    xs.add(cx); ys.add(cy)
+    box.add(1)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(0)
+    box.add(w)
+    box.add(h)
+    spawnFood(xs, ys, box, rng)
+    return 0
+}
+
+spawnFood(List<Int> xs, List<Int> ys, List<Int> box, List<Int> rng): Int {
+    var ex = listOf<Int>()
+    var ey = listOf<Int>()
+    var x = 0
+    while (x < gameWid(box)) {
+        var y = 0
+        while (y < gameHei(box)) {
+            if (cellBlocked(xs, ys, box, x, y, 0) == 0) {
+                ex.add(x)
+                ey.add(y)
+            }
+            y = y + 1
+        }
+        x = x + 1
+    }
+    if (ex.size() == 0) {
+        gameSetOver(box, 1)
+        return 0
+    }
+    var idx = randInt(rng, ex.size())
+    gameSetFood(box, ex.get(idx), ey.get(idx))
+    return 1
+}
+
+cellBlocked(List<Int> xs, List<Int> ys, List<Int> box, Int x, Int y, Int ignoreTail): Int {
+    if (x < 0 || y < 0 || x >= gameWid(box) || y >= gameHei(box)) { return 1 }
+    var n = gameLen(xs)
+    var lim = n
+    if (ignoreTail == 1) { lim = n - 1 }
+    var i = 0
+    while (i < lim) {
+        if (xs.get(i) == x && ys.get(i) == y) { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+manhattan(Int x0, Int y0, Int x1, Int y1): Int {
+    var dx = x0 - x1
+    if (dx < 0) { dx = -dx }
+    var dy = y0 - y1
+    if (dy < 0) { dy = -dy }
+    return dx + dy
+}
+
+stepGame(List<Int> xs, List<Int> ys, List<Int> box, Int action, List<Int> rng): Double {
+    var nd = relDir(gameDir(box), action)
+    var nx = gameHeadX(xs) + headingDx(nd)
+    var ny = gameHeadY(ys) + headingDy(nd)
+    var before = manhattan(gameHeadX(xs), gameHeadY(ys), gameFoodX(box), gameFoodY(box))
+    if (cellBlocked(xs, ys, box, nx, ny, 1) == 1) {
+        gameSetOver(box, 1)
+        return -10.0
+    }
+    gamePushHead(xs, ys, nx, ny)
+    gameSetDir(box, nd)
+    gameIncSteps(box)
+    if (nx == gameFoodX(box) && ny == gameFoodY(box)) {
+        gameAddScore(box, 1)
+        spawnFood(xs, ys, box, rng)
+        return 10.0
+    }
+    gamePopTail(xs, ys)
+    var after = manhattan(gameHeadX(xs), gameHeadY(ys), gameFoodX(box), gameFoodY(box))
+    var shaping = before - after
+    return 1.0 * shaping
+}
+
+encodeStateFromGame(List<Int> xs, List<Int> ys, List<Int> box): Int {
+    var h = gameDir(box)
+    var rd = relDir(h, 1)
+    var ld = relDir(h, 2)
+    var hx = gameHeadX(xs)
+    var hy = gameHeadY(ys)
+    var dS = cellBlocked(xs, ys, box, hx + headingDx(h), hy + headingDy(h), 1)
+    var dR = cellBlocked(xs, ys, box, hx + headingDx(rd), hy + headingDy(rd), 1)
+    var dL = cellBlocked(xs, ys, box, hx + headingDx(ld), hy + headingDy(ld), 1)
+    var fdx = gameFoodX(box) - hx
+    var fdy = gameFoodY(box) - hy
+    var hdx = headingDx(h)
+    var hdy = headingDy(h)
+    var ldx = headingDx(ld)
+    var ldy = headingDy(ld)
+    var rdx = headingDx(rd)
+    var rdy = headingDy(rd)
+    var fA = 0
+    var fL = 0
+    var fR = 0
+    if (fdx * hdx + fdy * hdy > 0) { fA = 1 }
+    if (fdx * ldx + fdy * ldy > 0) { fL = 1 }
+    if (fdx * rdx + fdy * rdy > 0) { fR = 1 }
+    return encodeState(dS, dR, dL, fA, fL, fR)
+}
+
+qIndex(List<Int> keys, Int s): Int {
+    var i = 0
+    var n = keys.size()
+    while (i < n) {
+        if (keys.get(i) == s) { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+// qGreedy: melhor acao pela Q-table, sem mutar (estado novo = reto).
+qGreedy(List<Int> keys, List<Double> vals, Int s): Int {
+    var idx = qIndex(keys, s)
+    if (idx == -1) { return 0 }
+    var best = 0
+    var bestV = vals.get(idx * 3)
+    if (vals.get(idx * 3 + 1) > bestV) { best = 1; bestV = vals.get(idx * 3 + 1) }
+    if (vals.get(idx * 3 + 2) > bestV) { best = 2 }
+    return best
+}
+
+// ─── desenho (igual ao watch.html) ─────────────────────────────────────
+
+fillRect(Canvas c, Int x, Int y, Int w, Int h): Int {
+    c.beginPath()
+    c.moveTo(x, y)
+    c.lineTo(x + w, y)
+    c.lineTo(x + w, y + h)
+    c.lineTo(x, y + h)
+    c.closePath()
+    c.fill()
+    return 0
+}
 
 paintRect(Canvas c, Int x, Int y, Int cell): Int {
     c.beginPath()
@@ -16,67 +256,70 @@ paintRect(Canvas c, Int x, Int y, Int cell): Int {
     return 0
 }
 
-drawBoard(Canvas c, Int w, Int h): Int {
-    c.setFill(Palette.black)
+drawFrame(Canvas c, List<Int> f, Int cell, Int n): Int {
+    c.setFill(bgColor())
+    fillRect(c, 0, 0, 216, 216)
+    c.setStroke(gridColor())
     c.beginPath()
-    c.moveTo(0, 0)
-    c.lineTo(w, 0)
-    c.lineTo(w, h)
-    c.lineTo(0, h)
+    var g = 0
+    while (g <= 12) {
+        c.moveTo(g * cell, 0)
+        c.lineTo(g * cell, 12 * cell)
+        c.moveTo(0, g * cell)
+        c.lineTo(12 * cell, g * cell)
+        g = g + 1
+    }
+    c.stroke()
+    c.setFill(foodColor())
+    c.beginPath()
+    c.arc(f.get(n - 3) * cell + cell / 2, f.get(n - 2) * cell + cell / 2, cell / 2 - 3, 0.0, 6.29)
     c.closePath()
     c.fill()
-    return 0
-}
-
-drawFrame(Canvas c, List<Int> f, Int cell): Int {
-    var n = f.size()
-    drawBoard(c, 192, 192)
-    c.setFill(Palette.red)
-    c.beginPath()
-        c.arc(f.get(n - 3) * cell + 8, f.get(n - 2) * cell + 8, 6, 0.0, 6.29)
-    c.closePath()
-    c.fill()
-    c.setFill(Palette.green)
+    c.setFill(bodyColor())
     var k = 0
     while (k + 3 < n) {
         paintRect(c, f.get(k) * cell, f.get(k + 1) * cell, cell)
         k = k + 2
     }
-    c.setFill(Palette.yellow)
+    c.setFill(headColor())
     paintRect(c, f.get(n - 5) * cell, f.get(n - 4) * cell, cell)
     return 0
 }
 
-drawChart(Canvas ch, List<Int> hist): Int {
-    ch.setFill(Palette.black)
-    ch.beginPath()
-    ch.moveTo(0, 0)
-    ch.lineTo(240, 0)
-    ch.lineTo(240, 100)
-    ch.lineTo(0, 100)
-    ch.closePath()
-    ch.fill()
+// drawLiveChart: curva pontos-por-episodio (como o watch.html) desenhada
+// uma vez na faixa direita do canvas (x 240..480, sem texto).
+drawLiveChart(Canvas c, List<Int> hist): Int {
+    c.setFill(bgColor())
+    fillRect(c, 240, 0, 240, 216)
+    var n = hist.size()
+    if (n < 2) { return 0 }
     var mx = 1
     var i = 0
-    while (i < hist.size()) {
+    while (i < n) {
         if (hist.get(i) > mx) { mx = hist.get(i) }
         i = i + 1
     }
-    ch.setStroke(Palette.green)
-    ch.beginPath()
+    c.setStroke(gridColor())
+    c.beginPath()
+    c.moveTo(244, 4)
+    c.lineTo(244, 204)
+    c.lineTo(476, 204)
+    c.stroke()
+    c.setStroke(lineColor())
+    c.beginPath()
     var j = 0
-    while (j < hist.size()) {
-        var x = 20 + j * 2
-        var y = 90 - hist.get(j) * 3
-        if (y < 5) { y = 5 }
+    while (j < n) {
+        var x = 248 + j * 224 / (n - 1)
+        var y = 200 - hist.get(j) * 184 / mx
+        if (y < 8) { y = 8 }
         if (j == 0) {
-            ch.moveTo(x, y)
+            c.moveTo(x, y)
         } else {
-            ch.lineTo(x, y)
+            c.lineTo(x, y)
         }
         j = j + 1
     }
-    ch.stroke()
+    c.stroke()
     return mx
 }
 
@@ -89,55 +332,72 @@ togglePause(List<Int> paused): Int {
     return 0
 }
 
-askRestart(List<Int> restart): Int {
-    restart.set(0, 1)
-    return 0
+// frameOf: foto atual (cobra + comida + pontos) no formato do drawFrame.
+frameOfUi(List<Int> xs, List<Int> ys, List<Int> box, List<Int> f): Int {
+    var k = 0
+    while (k < gameLen(xs)) {
+        f.add(xs.get(k))
+        f.add(ys.get(k))
+        k = k + 1
+    }
+    f.add(gameFoodX(box))
+    f.add(gameFoodY(box))
+    f.add(gameScore(box))
+    return f.size()
+}
+
+// playGame: uma partida ao vivo; retorna os pontos.
+playGame(List<Int> qkeys, List<Double> qvals, Int seed, Canvas board, Label stepLbl, List<Int> paused, Int cell): Int {
+    var rng = listOf<Int>()
+    rng.add(seed)
+    var xs = listOf<Int>()
+    var ys = listOf<Int>()
+    var box = listOf<Int>()
+    newGame(xs, ys, box, 12, 12, rng)
+    while (gameOver(box) == 0 && gameSteps(box) < 300) {
+        if (paused.get(0) == 0) {
+            var s = encodeStateFromGame(xs, ys, box)
+            stepGame(xs, ys, box, qGreedy(qkeys, qvals, s), rng)
+            var f = listOf<Int>()
+            var n = frameOfUi(xs, ys, box, f)
+            drawFrame(board, f, cell, n)
+            stepLbl.text = "passo: " + gameSteps(box).toString() + " - pontos: " + gameScore(box).toString()
+        }
+        time.sleep(150)
+    }
+    return gameScore(box)
 }
 
 main() {
-    println("ui starting")
+    println("ui starting - ao vivo")
     var w = Window("Cobrinha IA - Kof UI")
-    var board = Canvas(192, 192)
+    var board = Canvas(480, 216)
     w.bind(board)
-    var scoreLbl = Label("pontos: 0")
-    w.bind(scoreLbl)
-    var chart = Canvas(240, 100)
-    w.bind(chart)
+    var stepLbl = Label("passo: 0 - pontos: 0")
+    w.bind(stepLbl)
     var statsLbl = Label("treino")
     w.bind(statsLbl)
     var paused = listOf<Int>()
     paused.add(0)
-    var restart = listOf<Int>()
-    restart.add(0)
     w.bind(Button("Pausar", () -> togglePause(paused)))
-    w.bind(Button("Reiniciar", () -> askRestart(restart)))
     w.show()
-    var frames = demoFrames()
+    var qkeys = qKeys()
+    var qvals = qVals()
     var hist = scoreHistory()
-    var cell = 16
-    var best = trainingBest()
-    var eps = trainingEpisodes()
-    statsLbl.text = "melhor: " + best.toString() + " - ep " + eps.toString()
-    drawChart(chart, hist)
+    drawLiveChart(board, hist)
+    statsLbl.text = "treino rec: " + trainingBest().toString() + " (" + trainingEpisodes().toString() + " eps)"
+    var games = 0
+    var liveBest = 0
     var running = listOf<Int>()
     running.add(1)
     while (running.get(0) == 1) {
-        var i = 0
-        while (i < frames.size()) {
-            if (restart.get(0) == 1) {
-                restart.set(0, 0)
-                i = 0
-            }
-            if (paused.get(0) == 0) {
-                var f = frames.get(i)
-                var n = f.size()
-                drawFrame(board, f, cell)
-                scoreLbl.text = "pontos: " + f.get(n - 1).toString()
-                i = i + 1
-            }
-            time.sleep(200)
-        }
-        scoreLbl.text = "fim! pontos: " + demoScore().toString() + " - repetindo..."
-        time.sleep(1000)
+        var seed = gameSeed(games)
+        println("partida " + (games + 1).toString() + " seed=" + seed.toString())
+        var score = playGame(qkeys, qvals, seed, board, stepLbl, paused, 18)
+        if (score > liveBest) { liveBest = score }
+        stepLbl.text = "fim! pontos: " + score.toString() + " - recorde ao vivo: " + liveBest.toString()
+        statsLbl.text = "partida " + (games + 1).toString() + " - vivo rec: " + liveBest.toString() + " | treino rec: " + trainingBest().toString()
+        time.sleep(1500)
+        games = games + 1
     }
 }
