@@ -78,8 +78,11 @@ sai do lugar; no fim ela atravessa a grade comendo.
 
 ```bash
 kof build ui/snake_ui.kof --target js --output ui-dist
-kof-webview ui-dist/index.html
+kof-webview "$(pwd)/ui-dist/index.html"
 ```
+
+(O webview exige caminho absoluto — com caminho relativo dá
+`cannot resolve file URI`. Feche a janela para sair.)
 
 Abre a janela "Cobrinha IA - Kof UI" com tabuleiro, placar, botões
 Pausar/Reiniciar e gráfico do treino — tudo desenhado pelo Canvas do
