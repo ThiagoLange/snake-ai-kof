@@ -30,10 +30,10 @@ drawBoard(Canvas c, Int w, Int h): Int {
 
 drawFrame(Canvas c, List<Int> f, Int cell): Int {
     var n = f.size()
-    drawBoard(c, 300, 300)
+    drawBoard(c, 192, 192)
     c.setFill(Palette.red)
     c.beginPath()
-    c.arc(f.get(n - 3) * cell + 12, f.get(n - 2) * cell + 12, 9, 0.0, 6.29)
+        c.arc(f.get(n - 3) * cell + 8, f.get(n - 2) * cell + 8, 6, 0.0, 6.29)
     c.closePath()
     c.fill()
     c.setFill(Palette.green)
@@ -51,9 +51,9 @@ drawChart(Canvas ch, List<Int> hist): Int {
     ch.setFill(Palette.black)
     ch.beginPath()
     ch.moveTo(0, 0)
-    ch.lineTo(300, 0)
-    ch.lineTo(300, 120)
-    ch.lineTo(0, 120)
+    ch.lineTo(240, 0)
+    ch.lineTo(240, 100)
+    ch.lineTo(0, 100)
     ch.closePath()
     ch.fill()
     var mx = 1
@@ -66,8 +66,8 @@ drawChart(Canvas ch, List<Int> hist): Int {
     ch.beginPath()
     var j = 0
     while (j < hist.size()) {
-        var x = 30 + j
-        var y = 110 - hist.get(j) * 3
+        var x = 20 + j * 2
+        var y = 90 - hist.get(j) * 3
         if (y < 5) { y = 5 }
         if (j == 0) {
             ch.moveTo(x, y)
@@ -97,11 +97,11 @@ askRestart(List<Int> restart): Int {
 main() {
     println("ui starting")
     var w = Window("Cobrinha IA - Kof UI")
-    var board = Canvas(300, 300)
+    var board = Canvas(192, 192)
     w.bind(board)
     var scoreLbl = Label("pontos: 0")
     w.bind(scoreLbl)
-    var chart = Canvas(300, 120)
+    var chart = Canvas(240, 100)
     w.bind(chart)
     var statsLbl = Label("treino")
     w.bind(statsLbl)
@@ -114,7 +114,7 @@ main() {
     w.show()
     var frames = demoFrames()
     var hist = scoreHistory()
-    var cell = 25
+    var cell = 16
     var best = trainingBest()
     var eps = trainingEpisodes()
     statsLbl.text = "melhor: " + best.toString() + " - ep " + eps.toString()
